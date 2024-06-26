@@ -13,6 +13,8 @@ fn read_metadata(sequence_database_file_name: &String) -> Result<(usize, (usize,
 
     let mut first_line = String::new();
     reader.read_line(&mut first_line)?;
+
+    // I don't like this, but I don't know what else to do.
     let sequence_length: usize = first_line.trim().strip_prefix("# base string length=")
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "Invalid metadata format"))?
         .parse().map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
@@ -32,7 +34,19 @@ fn read_metadata(sequence_database_file_name: &String) -> Result<(usize, (usize,
     Ok((sequence_length, (min_edit_distance, max_edit_distance)))
 }
 
-fn generate_comparison_data(sequence_database_file_name: &String) -> Result<(HashMap<usize, Vec<f64>>, HashMap<usize, Vec<f64>>, Vec<usize>), Box<dyn Error>> {
+
+fn main() -> Result<()> {
+    const K_RANGE: [usize; 3] = [2,3,4];
+    let sequence_database_file_name = "sequences_1000.csv".to_string();
+
+    let (sequence_length, (min_edit_distance, max_edit_distance)) = match read_metadata(&sequence_database_file_name) {
+        Ok(a, (b, c)) => (a, (b, c)),
+        Err(e) => {
+            println!("error reading sequence length: {}", err);
+            process::exit(1);
+        }
+    }
+
     // Initialize the data structures this function will return. 
     // edit_distance_sums and edit_distance_squared_sums are HashMaps that contain
     // the sums and squaned sums of estimated distances between strings for a given k and edit distance.
@@ -60,28 +74,6 @@ fn generate_comparison_data(sequence_database_file_name: &String) -> Result<(Has
             let estimated_distance = tensor::l2norm(&string1_chars, &string2_chars, k);
             edit_distance_sums.get_mut(&k).unwrap()[edit_distance] += estimated_distance;
             edit_distance_squared_sums.get_mut(&k).unwrap()[edit_distance] += estimated_distance * estimated_distance;
-        }
-    }
-    Ok((edit_distance_sums, edit_distance_squared_sums, edit_distance_counts))
-}
-
-fn main() -> Result<()> {
-    const K_RANGE: [usize; 3] = [2,3,4];
-    let sequence_database_file_name = "sequences_1000.csv".to_string();
-
-    let (sequence_length, (min_edit_distance, max_edit_distance)) = match read_metadata(&sequence_database_file_name) {
-        Ok(a, (b, c)) => (a, (b, c)),
-        Err(e) => {
-            println!("error reading sequence length: {}", err);
-            process::exit(1);
-        }
-    }
-
-    let (edit_distance_sums: HashMap<usize, Vec<f64>>, edit_distance_squared_sums: HashMap<usize, Vec<f64>>, edit_distance_counts: Vec<usize>) = match generate_comparison_data(&sequence_database_file_name, &K_RANGE) {
-        Ok(a, b, c) => (a, b, c),
-        Err(e) => {
-            println!("error generating estimated distance data from the file: {}", err);
-            process::exit(1);
         }
     }
 
