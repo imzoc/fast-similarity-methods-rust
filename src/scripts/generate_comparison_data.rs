@@ -41,7 +41,7 @@ fn read_metadata(sequence_database_file_name: &String) -> Result<(usize, (usize,
  */
 fn main() -> Result<()> {
     const K_RANGE: [usize; 3] = [2,3,4];
-    let sequence_database_file_name = "sequences_1000.csv".to_string();
+    let sequence_database_file_name = "../../tests/inputs/sequences_1000.csv".to_string();
 
     let (_sequence_length, (min_edit_distance, max_edit_distance)) = match read_metadata(&sequence_database_file_name) {
         Ok((a, (b, c))) => (a, (b, c)),
