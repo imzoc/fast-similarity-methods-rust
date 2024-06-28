@@ -6,7 +6,6 @@ use similarity_methods::utils::sequence::generate_pair;
 /*
  * This script generates a bunch of string pairs with varying pre-computed
  * Levenshtein distances, from 0 to 0.4 * string length.
- * 
  */
 fn main() -> Result<()> {
     let n_sequences = 5;
@@ -17,13 +16,6 @@ fn main() -> Result<()> {
 
     let mut file = File::create(format!("sequences_{:?}.csv", sequence_length))?;
     writeln!(&mut file, "base_sequence,modified_sequence,edit_distance")?;
-
-    // METADATA -- I don't know where to put this.
-    /*
-    writeln!(&mut file, "# base string length={:?}", sequence_length)?;
-    writeln!(&mut file, "# minimum edit distance={:?}", starting_edit_distance)?;
-    writeln!(&mut file, "# maximum edit distance={:?}", max_edit_distance)?;
-     */
 
     for _ in 0..n_sequences {
         for edit_distance in edit_distance_range.clone() {
