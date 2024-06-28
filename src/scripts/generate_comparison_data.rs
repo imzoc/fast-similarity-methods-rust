@@ -1,8 +1,9 @@
 use std::fs::File;
-use std::io::{self, Result, Write,BufReader,BufRead};
+use std::io::{Result, Write,BufReader,BufRead};
 use std::collections::HashMap;
 
 use csv::ReaderBuilder;
+use serde::Deserialize;
 
 use similarity_methods::utils::tensor;
 #[allow(unused_imports)]
@@ -14,37 +15,43 @@ struct Metadata {
     max_edit_distance: usize,
 }
 
-struct KHashmap {
-    data: HashMap<usize, Vec<f64>>,
+/* Using serde to parse CSV data. */
+#[derive(Debug, Deserialize)]
+struct DatabaseRecord {
+    base_sequence: String,
+    modified_sequence: String,
+    edit_distance: usize,
 }
 
-impl KHashmap {
+/* Custom struct to store data mapped to k and edit distance */
+struct KAndEditDistanceHashMap {
+    data: HashMap<(usize, usize), f64>,
+}
+
+impl KAndEditDistanceHashMap {
     // Create a new MyStruct with an empty HashMap
-    fn new(k_range: &Vec<usize>, edit_distance_range: usize) -> KHashmap {
-        KHashmap {
-            data: {
-                let data = HashMap::new();
-                for k in k_range {
-                    data.insert(k.clone(), vec![0.0; edit_distance_range]);
-                }
-                data
-            },
+    fn new() -> KAndEditDistanceHashMap {
+        KAndEditDistanceHashMap {
+            data: HashMap::new(),
         }
     }
 
-    // Insert a value into the HashMap
-    fn insert(&mut self, key: usize, value: Vec<f64>) {
+    fn insert(&mut self, k: &usize, edit_distance: &usize, value: f64) {
+        let key = (k.clone(), edit_distance.clone());
         self.data.insert(key, value);
     }
 
-    // Get a reference to a value in the HashMap
-    fn get(&self, key: &usize) -> Option<&Vec<f64>> {
-        self.data.get(key)
+    fn update(&mut self, k: &usize, edit_distance: &usize, value: f64) {
+        let key = (*k, *edit_distance);
+        if self.data.contains_key(&key) {
+            *self.data.get_mut(&key).unwrap() += value;
+        } else {
+            self.insert(k, edit_distance, value);
+        }
     }
-
-    // Get a mutable reference to a value in the HashMap
-    fn get_mut(&mut self, key: &usize) -> Option<&mut Vec<f64>> {
-        self.data.get_mut(key)
+    
+    fn get(&self, k: &usize, edit_distance: &usize) -> &f64 {
+        self.data.get(&(*k, *edit_distance)).unwrap()
     }
 
 }
@@ -83,82 +90,74 @@ fn read_metadata(sequence_database_file_name: &String) -> Result<Metadata> {
 /* Please see this repo's README file, it contains the pseudocode for this script.
  */
 fn main() -> Result<()> {
+    // Filenames and hyper-parameters -- should the CLI handle this?
     let k_range: Vec<usize> = [2,3,4].to_vec();
     let sequence_database_file_name = "../../tests/inputs/sequences_1000.csv".to_string();
+    let comparison_data_file_name = "../../tests/inputs/data.csv".to_string();
 
+    // Parse database-related metadata -- Can I do this better?
     let metadata = read_metadata(&sequence_database_file_name)?;
     let _sequence_length = metadata.sequence_length;
     let max_edit_distance = metadata.max_edit_distance;
     let min_edit_distance = metadata.min_edit_distance;
 
-    // Initialize the data structures this function will return. 
-    // edit_distance_sums and edit_distance_squared_sums are HashMaps that contain
-    // the sums and squaned sums of estimated distances between strings for a given k and edit distance.
-    let mut edit_distance_sums = KHashmap::new(&k_range, max_edit_distance);
-    let mut edit_distance_squared_sums = KHashmap::new(&k_range, max_edit_distance);
-
-    // edit_distance_counts contains the number of string pairs with a true edit distance given by the index.
-    let mut edit_distance_counts: Vec<usize> = vec![0; max_edit_distance];
+    // Rolling magnitude and variability data.
+    let mut edit_distance_sums = KAndEditDistanceHashMap::new();
+    let mut edit_distance_squared_sums = KAndEditDistanceHashMap::new();
+    let mut edit_distance_counts = KAndEditDistanceHashMap::new();
 
     let file = File::open(sequence_database_file_name)?;
     let mut rdr = ReaderBuilder::new().from_reader(file);
-
-    for result in rdr.records() {
-        let record = result?;
-        let string1_chars: Vec<char> = record[0].chars().collect(); // (string of ~1000 letters)
-        let string2_chars: Vec<char> = record[1].chars().collect(); // (string of ~1000 letters)
-        let edit_distance: usize = record[2].parse().map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-        edit_distance_counts[edit_distance] += 1;
-        
-        // COMPUTATIONS
+    for result in rdr.deserialize() {
+        let record: DatabaseRecord = result?; // serde deserializes this for us!!!
         for k in k_range {
-            let estimated_distance = tensor::l2norm(&string1_chars, &string2_chars, k);
-            edit_distance_sums.get_mut(&k).unwrap()[edit_distance] += estimated_distance;
-            edit_distance_squared_sums.get_mut(&k).unwrap()[edit_distance] += estimated_distance * estimated_distance;
+            let estimated_distance = tensor::l2norm(&record.base_sequence.chars().collect(), &record.modified_sequence.chars().collect(), k);
+            edit_distance_sums.update(&k, &record.edit_distance, estimated_distance);
+            edit_distance_squared_sums.update(&k, &record.edit_distance, estimated_distance * estimated_distance);
+            edit_distance_counts.update(&k, &record.edit_distance, 1 as f64);
         }
     }
 
-    let mut confidence_intervals: HashMap<usize, Vec<(f64, f64)>> = HashMap::new();
-    let mut means: HashMap<usize, Vec<f64>> = HashMap::new();
+    // Compute mean and confidence intervals from rolling data.
+    let mut lower_bounds = KAndEditDistanceHashMap::new();
+    let mut upper_bounds = KAndEditDistanceHashMap::new();
+    let mut means = KAndEditDistanceHashMap::new();
     for k in k_range {
-        confidence_intervals.insert(k, vec![(0.0, 0.0); max_edit_distance]);
-
-        means.insert(k, vec![0.0; max_edit_distance]);
         for edit_distance in min_edit_distance..max_edit_distance {
-            confidence_intervals.get_mut(&k).unwrap()[edit_distance] = {
-                let sum = edit_distance_sums.get(&k).unwrap()[edit_distance];
-                let squared_sum = edit_distance_squared_sums.get(&k).unwrap()[edit_distance];
-                let count = edit_distance_counts[edit_distance] as f64;
+            let sum = edit_distance_sums.get(&k, &edit_distance);
+            let squared_sum = edit_distance_squared_sums.get(&k, &edit_distance);
+            let count = edit_distance_counts.get(&k, &edit_distance);
 
-                let mean = sum / count;
-                let variance = (squared_sum - mean * sum) / count;
-                let mean_se = (variance / count as f64).sqrt();
-                means.get_mut(&k).unwrap()[edit_distance] = mean;
-                (mean - mean_se, mean + mean_se)
-            }
+            let mean = sum / count;
+            let variance = (squared_sum - mean * sum) / count;
+            let mean_se = (variance / count).sqrt();
+
+            means.update(&k, &edit_distance, mean);
+            lower_bounds.update(&k, &edit_distance, mean - mean_se);
+            upper_bounds.update(&k, &edit_distance, mean + mean_se);
         }
     }
 
-    let mut file = File::create("data.csv")?;
-
-    let mut column_names: Vec<String> = Vec::new();
-    column_names.push("edit distance".to_string());
+    // Create the header row for comparison data file
+    let mut header_row: Vec<String> = Vec::new();
+    header_row.push("edit distance".to_string());
     for k in k_range {
-        column_names.push(format!("mean (k={})", k));
-        column_names.push(format!("lower confidence bound (k={})", k));
-        column_names.push(format!("upper confidence bound (k={})", k));
+        header_row.push(format!("mean (k={})", k));
+        header_row.push(format!("lower confidence bound (k={})", k));
+        header_row.push(format!("upper confidence bound (k={})", k));
     }
+    let header_row = header_row.join(",");
 
-    let header_row = column_names.join(",");
+    let mut file = File::create(comparison_data_file_name)?;
     writeln!(&mut file, "{}", header_row)?;
 
     for edit_distance in min_edit_distance..max_edit_distance {
         let mut row_values: Vec<String> = Vec::new();
         row_values.push(edit_distance.to_string());
         for k in k_range {
-            row_values.push(means[&k][edit_distance].to_string()); // mean
-            row_values.push(format!("{}", confidence_intervals[&k][edit_distance].0.to_string()));
-            row_values.push(format!("{}", confidence_intervals[&k][edit_distance].1.to_string()));
+            row_values.push(format!("{}", means.get(&k, &edit_distance))); // mean
+            row_values.push(format!("{}", lower_bounds.get(&k, &edit_distance)));
+            row_values.push(format!("{}", upper_bounds.get(&k, &edit_distance)));
         }
         let row = row_values.join(",");
         writeln!(&mut file, "{}", row)?;
