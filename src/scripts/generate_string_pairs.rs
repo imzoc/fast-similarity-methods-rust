@@ -9,12 +9,12 @@ use similarity_methods::utils::sequence::generate_pair;
  */
 fn main() -> Result<()> {
     let n_sequences = 5;
-    let sequence_length = 100;
+    let sequence_length = 1000;
     let starting_edit_distance = 0;
     let max_edit_distance = (0.4 * sequence_length as f64) as usize;
     let edit_distance_range = starting_edit_distance..max_edit_distance;
 
-    let mut file = File::create(format!("sequences_{:?}.csv", sequence_length))?;
+    let mut file = File::create(format!("tests/inputs/sequences_{:?}.csv", sequence_length))?;
     writeln!(&mut file, "base_sequence,modified_sequence,edit_distance")?;
 
     for _ in 0..n_sequences {
