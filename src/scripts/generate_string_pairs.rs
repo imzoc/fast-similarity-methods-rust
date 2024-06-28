@@ -16,9 +16,14 @@ fn main() -> Result<()> {
     let edit_distance_range = starting_edit_distance..max_edit_distance;
 
     let mut file = File::create(format!("sequences_{:?}.csv", sequence_length))?;
+    writeln!(&mut file, "base_sequence,modified_sequence,edit_distance")?;
+
+    // METADATA -- I don't know where to put this.
+    /*
     writeln!(&mut file, "# base string length={:?}", sequence_length)?;
     writeln!(&mut file, "# minimum edit distance={:?}", starting_edit_distance)?;
     writeln!(&mut file, "# maximum edit distance={:?}", max_edit_distance)?;
+     */
 
     for _ in 0..n_sequences {
         for edit_distance in edit_distance_range.clone() {
