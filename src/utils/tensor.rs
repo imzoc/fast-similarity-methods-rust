@@ -4,6 +4,13 @@ pub struct Tensor {
     pub shape: Vec<usize>,
 }
 
+pub struct Parameters {
+    pub k: usize,
+    pub w: usize,
+    pub base_sequence: Vec<char>,
+    pub modified_sequence: Vec<char>,
+}
+
 #[allow(dead_code)]
 impl Tensor {
     pub fn new(shape: Vec<usize>, default_value: usize) -> Self {
@@ -81,9 +88,9 @@ impl Tensor {
     }
 }
 
-pub fn l2norm(chars1: &Vec<char>, chars2: &Vec<char>, k: usize) -> f64 {
-    let chars1_tensor = kmer_tensor(&chars1, k);
-    let chars2_tensor = kmer_tensor(&chars2, k);
+pub fn l2norm(params: Parameters) -> f64 {
+    let chars1_tensor = kmer_tensor(&params.base_sequence, params.k);
+    let chars2_tensor = kmer_tensor(&params.modified_sequence, params.k);
 
     let chars1_vector = chars1_tensor.data_ref();
     let chars2_vector = chars2_tensor.data_ref();
