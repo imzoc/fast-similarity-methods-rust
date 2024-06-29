@@ -11,7 +11,7 @@ struct Args {
     #[arg(short, long)]
     sequences: String,
 
-    #[arg(short, long, default_value = "data.csv")]
+    #[arg(short, long, default_value = "tests/outputs/data.csv")]
     outfile: String,
 
     #[arg(short, long, default_values_t = [2, 3, 4], num_args(1..=3))]
