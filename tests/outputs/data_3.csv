@@ -1,0 +1,4 @@
+edit distance,mean (k=2),lower confidence bound (k=2),upper confidence bound (k=2),mean (k=3),lower confidence bound (k=3),upper confidence bound (k=3),mean (k=4),lower confidence bound (k=4),upper confidence bound (k=4)
+0,0,0,0,0,0,0,0,0,0
+1,1,1,1,1,1,1,1,1,1
+2,2,2,2,2.449489742783178,2.449489742783178,2.449489742783178,2.8284271247461903,2.8284271247461903,2.8284271247461903
