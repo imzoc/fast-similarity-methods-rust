@@ -103,6 +103,16 @@ pub fn l2norm(params: Parameters) -> f64 {
     distance_f64.sqrt()
 }
 
+pub fn cosine_similarity(params: Parameters) -> f64 {
+    unimplemented!();
+}
+pub fn minimizer_l2_norm(params: Parameters) -> f64 {
+    unimplemented!();
+}
+pub fn strobemer(params: Parameters) -> f64 {
+    unimplemented!();
+}
+
 pub fn kmer_tensor(sequence: &Vec<char>, k: usize) -> Tensor {
     let kmers = sequence::generate_kmers(&sequence, k);
 

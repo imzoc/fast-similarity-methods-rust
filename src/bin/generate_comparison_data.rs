@@ -17,7 +17,7 @@ struct Args {
     #[arg(short, long, default_value = "l2_norm")]
     estimation_method: String,
 
-    #[arg(short, long, default_values_t = [2, 3, 4], num_args(1..=3))]
+    #[arg(short, long, default_values_t = [2, 3, 4], num_args(1..=3))] // What does num_args() do?
     k_range: Vec<usize>,
 
     #[arg(short, long, default_value_t = 10)]
@@ -101,11 +101,12 @@ fn run(args: Args) -> Result<()> {
         edit_distances.push(record.edit_distance);
 
         for k in &args.k_range {
+            let params = record.generate_kmer_parameters(k, &args.w);
             let estimated_distance: f64 = match args.estimation_method.as_str() {
-                "l2_norm" => tensor::l2norm(record.generate_kmer_parameters(k, &args.w)),
-                "cosine_similarity" => unimplemented!(), //tensor::cosine_similarity(&record, &args)?,
-                "minimizer_l2_norm" => unimplemented!(), //tensor::minimizer_l2_norm(&record, &args)?,
-                "strobemer" => unimplemented!(), //tensor::strobemer(&record, &args)?,
+                "l2_norm" => tensor::l2norm(params),
+                "cosine_similarity" => tensor::cosine_similarity(params),
+                "minimizer_l2_norm" => tensor::minimizer_l2_norm(params),
+                "strobemer" => tensor::strobemer(params),
                 _ => unreachable!(),
             };
 
