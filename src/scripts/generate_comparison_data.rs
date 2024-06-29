@@ -64,6 +64,7 @@ fn main() -> Result<()> {
     let mut edit_distance_counts = KAndEditDistanceHashMap::new();
     let mut edit_distances: Vec<usize> = Vec::new();
 
+    // Generate the data.
     let file = File::open(sequence_database_file_name)?;
     let mut rdr = ReaderBuilder::new().from_reader(file);
     for result in rdr.deserialize() {
@@ -110,6 +111,7 @@ fn main() -> Result<()> {
     let mut file = File::create(comparison_data_file_name)?;
     writeln!(&mut file, "{}", header_row)?;
 
+    // Write the CSV data.
     for edit_distance in edit_distances.clone() {
         let mut row_values: Vec<String> = Vec::new();
         row_values.push(edit_distance.to_string());
