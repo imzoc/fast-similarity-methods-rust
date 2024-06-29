@@ -2,6 +2,7 @@
 name = "similarity_methods"
 version = "0.1.0"
 edition = "2021"
+default-run = "generate_comparison_data"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -20,11 +21,10 @@ tempfile = "3.10.1"
 name = "similarity_methods"  # This name will be used to reference the library
 path = "src/lib.rs"  # Specify the path to your library file
 
-
 [[bin]]
 name = "generate_comparison_data"
-path = "src/scripts/generate_comparison_data.rs"
+path = "src/bin/generate_comparison_data.rs"
 
 [[bin]]
 name = "generate_string_pairs"
-path = "src/scripts/generate_string_pairs.rs"
+path = "src/bin/generate_string_pairs.rs"

@@ -14,8 +14,14 @@ struct Args {
     #[arg(short, long, default_value = "tests/outputs/data.csv")]
     outfile: String,
 
+    #[arg(short, long, default_value = "l2norm")]
+    estimation_method: String,
+
     #[arg(short, long, default_values_t = [2, 3, 4], num_args(1..=3))]
     k_range: Vec<usize>,
+
+    #[arg(short, long, default_value_t = 10)]
+    w: usize,
 }
 
 #[allow(unused_imports)]
@@ -61,6 +67,13 @@ impl KAndEditDistanceHashMap {
     }
 }
 
+struct RunResult {
+    means: KAndEditDistanceHashMap,
+    upper_bounds: KAndEditDistanceHashMap,
+    lower_bounds: KAndEditDistanceHashMap,
+    edit_distances: Vec<usize>, 
+}
+
 // --------------------------------------------------
 fn main() {
     if let Err(e) = run(Args::parse()) {
@@ -72,12 +85,49 @@ fn main() {
 // --------------------------------------------------
 // See this repo's README file for pseudocode
 fn run(args: Args) -> Result<()> {
+    let run_results: RunResult = match args.estimation_method.as_str() {
+        "l2_norm" => run_l2norm(&args)?,
+        "cosine_similarity" => run_cosine_similarity(&args)?,
+        "minimizer" => run_minimizer(&args)?,
+        "strobemer" => run_strobemer(&args)?,
+        _ => unreachable!(),
+    };
+
+    // Create the header row for comparison data file
+    let mut header_row = vec!["edit distance".to_string()];
+    for k in &args.k_range {
+        header_row.push(format!("mean (k={})", k));
+        header_row.push(format!("lower confidence bound (k={})", k));
+        header_row.push(format!("upper confidence bound (k={})", k));
+    }
+
+    let mut wtr = WriterBuilder::new()
+        .delimiter(b',')
+        .from_path(&args.outfile)?;
+    wtr.write_record(&header_row)?;
+
+    for dist in run_results.edit_distances.clone() {
+        let mut row = vec![dist.to_string()];
+        for k in &args.k_range {
+            // mean
+            row.push(format!("{}", run_results.means.get(*k, dist)));
+            row.push(format!("{}", run_results.lower_bounds.get(*k, dist)));
+            row.push(format!("{}", run_results.upper_bounds.get(*k, dist)));
+        }
+        wtr.write_record(&row)?;
+    }
+
+    println!(r#"Done, see output "{}""#, args.outfile);
+    Ok(())
+}
+
+fn run_l2norm(args: &Args) -> Result<RunResult> {
     // Rolling magnitude and variability data.
     let mut edit_distance_sums = KAndEditDistanceHashMap::new();
     let mut edit_distance_squared_sums = KAndEditDistanceHashMap::new();
     let mut edit_distance_counts = KAndEditDistanceHashMap::new();
     let mut edit_distances = vec![];
-    let mut rdr = ReaderBuilder::new().from_path(args.sequences)?;
+    let mut rdr = ReaderBuilder::new().from_path(&args.sequences)?;
 
     for result in rdr.deserialize() {
         let record: DatabaseRecord = result?;
@@ -125,33 +175,44 @@ fn run(args: Args) -> Result<()> {
             lower_bounds.update(*k, edit_distance, mean - mean_se);
             upper_bounds.update(*k, edit_distance, mean + mean_se);
         }
-    }
+    };
+    Ok(RunResult{
+        means, lower_bounds, upper_bounds, edit_distances
+    })
+}
 
-    // Create the header row for comparison data file
-    let mut header_row = vec!["edit distance".to_string()];
-    for k in &args.k_range {
-        header_row.push(format!("mean (k={})", k));
-        header_row.push(format!("lower confidence bound (k={})", k));
-        header_row.push(format!("upper confidence bound (k={})", k));
-    }
+fn run_cosine_similarity(args: &Args) -> Result<RunResult> {
+    // Compute mean and confidence intervals from rolling data.
+    let mut lower_bounds = KAndEditDistanceHashMap::new();
+    let mut upper_bounds = KAndEditDistanceHashMap::new();
+    let mut means = KAndEditDistanceHashMap::new();
+    let mut edit_distances = vec![];
 
-    let mut wtr = WriterBuilder::new()
-        .delimiter(b',')
-        .from_path(&args.outfile)?;
-    wtr.write_record(&header_row)?;
+    Ok(RunResult{
+        means, lower_bounds, upper_bounds, edit_distances
+    })
+}
 
-    for dist in edit_distances.clone() {
-        let mut row = vec![dist.to_string()];
-        for k in &args.k_range {
-            // mean
-            row.push(format!("{}", means.get(*k, dist)));
-            row.push(format!("{}", lower_bounds.get(*k, dist)));
-            row.push(format!("{}", upper_bounds.get(*k, dist)));
-        }
-        wtr.write_record(&row)?;
-    }
+fn run_minimizer(args: &Args) -> Result<RunResult> {
+    // Compute mean and confidence intervals from rolling data.
+    let mut lower_bounds = KAndEditDistanceHashMap::new();
+    let mut upper_bounds = KAndEditDistanceHashMap::new();
+    let mut means = KAndEditDistanceHashMap::new();
+    let mut edit_distances = vec![];
 
-    println!(r#"Done, see output "{}""#, args.outfile);
+    Ok(RunResult{
+        means, lower_bounds, upper_bounds, edit_distances
+    })
+}
 
-    Ok(())
+fn run_strobemer(args: &Args) -> Result<RunResult> {
+    // Compute mean and confidence intervals from rolling data.
+    let mut lower_bounds = KAndEditDistanceHashMap::new();
+    let mut upper_bounds = KAndEditDistanceHashMap::new();
+    let mut means = KAndEditDistanceHashMap::new();
+    let mut edit_distances = vec![];
+
+    Ok(RunResult{
+        means, lower_bounds, upper_bounds, edit_distances
+    })
 }
