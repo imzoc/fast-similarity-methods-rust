@@ -5,6 +5,8 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::error::Error;
 
+use pretty_assertions::assert_eq;
+
 #[derive(Debug, Parser)]
 #[command(about, author, version)]
 /// Similarity Methods
@@ -103,12 +105,16 @@ fn run(args: Args) -> Result<(), Box<dyn Error>> {
 
         for k in &args.k_range {
             let params = record.generate_kmer_parameters(k, &args.w);
+            assert_eq!(&args.estimation_method, "minimizer_l2_norm");
             let estimated_distance: f64 = match args.estimation_method.as_str() {
                 "l2_norm" => tensor::l2norm(params)?,
                 "cosine_similarity" => tensor::cosine_similarity(params)?,
                 "minimizer_l2_norm" => tensor::minimizer_l2_norm(params)?,
                 "strobemer" => tensor::strobemer(params)?,
-                _ => unreachable!(),
+                _ => {
+                    assert_eq!(&args.estimation_method, "minimizer_l2_norm");
+                    unreachable!()
+                }
             };
 
 

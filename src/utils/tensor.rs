@@ -5,6 +5,8 @@ use std::error::Error;
 use seahash::SeaHasher;
 
 #[derive(Debug)]
+#[derive(Hash)]
+#[derive(Clone)]
 pub struct Kmer {
     pub chars: Vec<char>,
     pub k: usize,
@@ -159,10 +161,10 @@ pub fn cosine_similarity(params: Parameters) -> Result<f64, Box<dyn Error>> {
 }
 
 
-fn my_hash_function<T: Hash> (item: &T, seed: u64) -> usize {
+fn my_hash_function<T: Hash> (item: &T, seed: u64) -> u64 {
     let mut hasher = SeaHasher::with_seeds(seed, seed, seed, seed);
     item.hash(&mut hasher);
-    hasher.finish() as usize
+    hasher.finish()
 }
 
 pub fn minimizer_l2_norm(params: Parameters) -> Result<f64, Box<dyn Error>> {
@@ -174,21 +176,15 @@ pub fn minimizer_l2_norm(params: Parameters) -> Result<f64, Box<dyn Error>> {
         let base_window = &params.base_sequence[idx..params.w].to_vec();
         let mod_window = &params.modified_sequence[idx..params.w].to_vec();
 
-        let base_kmers = sequence::generate_kmers(base_window, params.k);
-        let mod_kmers = sequence::generate_kmers(mod_window, params.k);
+        let base_kmers = generate_kmers(base_window, params.k);
+        let mod_kmers = generate_kmers(mod_window, params.k);
 
         let seed: u64 = 69;
-        let base_minimizer = Kmer {
-            chars: base_kmers.iter().min_by_key(|item| my_hash_function(item, seed)).unwrap().clone(),
-            k: params.k
-        };
-        let mod_minimizer = Kmer {
-            chars: mod_kmers.iter().min_by_key(|item| my_hash_function(item, seed)).unwrap().clone(),
-            k: params.k
-        };
+        let base_minimizer = base_kmers.iter().min_by_key(|item| my_hash_function(item, seed)).unwrap();
+        let mod_minimizer = mod_kmers.iter().min_by_key(|item| my_hash_function(item, seed)).unwrap();
 
-        base_minimizers.push(base_minimizer);
-        mod_minimizers.push(mod_minimizer);
+        base_minimizers.push(base_minimizer.clone());
+        mod_minimizers.push(mod_minimizer.clone());
     }
     let mut base_tensor = Tensor::new_empty(params.k);
     base_tensor.populate(&base_minimizers)?;
