@@ -3,6 +3,7 @@ use clap::Parser;
 use csv::{ReaderBuilder, WriterBuilder};
 use serde::Deserialize;
 use std::collections::HashMap;
+use std::error::Error;
 
 #[derive(Debug, Parser)]
 #[command(about, author, version)]
@@ -88,7 +89,7 @@ fn main() {
 
 // --------------------------------------------------
 // See this repo's README file for pseudocode
-fn run(args: Args) -> Result<(), String> {
+fn run(args: Args) -> Result<(), Box<dyn Error>> {
     // Rolling magnitude and variability data.
     let mut edit_distance_sums = KAndEditDistanceHashMap::new();
     let mut edit_distance_squared_sums = KAndEditDistanceHashMap::new();

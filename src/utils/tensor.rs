@@ -1,5 +1,6 @@
 use crate::utils::sequence;
 use std::hash::{Hash, Hasher};
+use std::error::Error;
 
 use seahash::SeaHasher;
 
@@ -31,7 +32,7 @@ impl Tensor {
         Tensor { data, shape }
     }
 
-    pub fn construct(sequence: &Vec<char>, k: usize) -> Result<Self, String> {
+    pub fn construct(sequence: &Vec<char>, k: usize) -> Result<Self, Box<dyn Error>> {
         let mut tensor = Tensor::new_empty(k);
         let kmers = generate_kmers(sequence, k);
         tensor.populate(&kmers)?;
@@ -128,7 +129,7 @@ pub fn generate_kmers(sequence: &Vec<char>, k: usize) -> Vec<Kmer> {
     kmers
 }
 
-pub fn l2norm(params: Parameters) -> Result<f64, String> {
+pub fn l2norm(params: Parameters) -> Result<f64, Box<dyn Error>> {
     let base_sequence_kmer_vector = kmer_tensor(&params.base_sequence, params.k)?.to_vec();
     let modified_sequence_kmer_vector = kmer_tensor(&params.modified_sequence, params.k)?.to_vec();
 
@@ -139,7 +140,7 @@ pub fn l2norm(params: Parameters) -> Result<f64, String> {
     Ok((distance as f64).sqrt())
 }
 
-pub fn cosine_similarity(params: Parameters) -> Result<f64, String> {
+pub fn cosine_similarity(params: Parameters) -> Result<f64, Box<dyn Error>> {
     let base_sequence_kmer_vector = kmer_tensor(&params.base_sequence, params.k)?.to_vec();
     let modified_sequence_kmer_vector = kmer_tensor(&params.modified_sequence, params.k)?.to_vec();
 
@@ -164,7 +165,7 @@ fn my_hash_function<T: Hash> (item: &T, seed: u64) -> usize {
     hasher.finish() as usize
 }
 
-pub fn minimizer_l2_norm(params: Parameters) -> Result<f64, String> {
+pub fn minimizer_l2_norm(params: Parameters) -> Result<f64, Box<dyn Error>> {
     let mut base_minimizers: Vec<Kmer> = Vec::new();
     let mut mod_minimizers: Vec<Kmer> = Vec::new();
 
@@ -201,10 +202,10 @@ pub fn minimizer_l2_norm(params: Parameters) -> Result<f64, String> {
     Ok((distance as f64).sqrt())
     
 }
-pub fn strobemer(params: Parameters) -> Result<f64, String> {
+pub fn strobemer(params: Parameters) -> Result<f64, Box<dyn Error>> {
     unimplemented!();
 }
 
-pub fn kmer_tensor(sequence: &Vec<char>, k: usize) -> Result<Tensor, String> {
+pub fn kmer_tensor(sequence: &Vec<char>, k: usize) -> Result<Tensor, Box<dyn Error>> {
     Tensor::construct(&sequence, k)
 }
