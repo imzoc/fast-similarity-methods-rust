@@ -88,7 +88,7 @@ fn main() {
 
 // --------------------------------------------------
 // See this repo's README file for pseudocode
-fn run(args: Args) -> Result<()> {
+fn run(args: Args) -> Result<(), String> {
     // Rolling magnitude and variability data.
     let mut edit_distance_sums = KAndEditDistanceHashMap::new();
     let mut edit_distance_squared_sums = KAndEditDistanceHashMap::new();
@@ -103,12 +103,13 @@ fn run(args: Args) -> Result<()> {
         for k in &args.k_range {
             let params = record.generate_kmer_parameters(k, &args.w);
             let estimated_distance: f64 = match args.estimation_method.as_str() {
-                "l2_norm" => tensor::l2norm(params),
-                "cosine_similarity" => tensor::cosine_similarity(params),
-                "minimizer_l2_norm" => tensor::minimizer_l2_norm(params),
-                "strobemer" => tensor::strobemer(params),
+                "l2_norm" => tensor::l2norm(params)?,
+                "cosine_similarity" => tensor::cosine_similarity(params)?,
+                "minimizer_l2_norm" => tensor::minimizer_l2_norm(params)?,
+                "strobemer" => tensor::strobemer(params)?,
                 _ => unreachable!(),
             };
+
 
             edit_distance_sums.update(
                 *k,

@@ -1,4 +1,14 @@
 use crate::utils::sequence;
+use std::hash::{Hash, Hasher};
+
+use seahash::SeaHasher;
+
+#[derive(Debug)]
+pub struct Kmer {
+    pub chars: Vec<char>,
+    pub k: usize,
+}
+
 pub struct Tensor {
     pub data: Vec<usize>,
     pub shape: Vec<usize>,
@@ -13,10 +23,19 @@ pub struct Parameters {
 
 #[allow(dead_code)]
 impl Tensor {
-    pub fn new(shape: Vec<usize>, default_value: usize) -> Self {
+    pub fn new_empty(k: usize) -> Tensor {
+        let shape = vec![4; k];
         let size = shape.iter().product();
-        let data = vec![default_value; size];
+        let data = vec![0; size];
+
         Tensor { data, shape }
+    }
+
+    pub fn construct(sequence: &Vec<char>, k: usize) -> Result<Self, String> {
+        let mut tensor = Tensor::new_empty(k);
+        let kmers = generate_kmers(sequence, k);
+        tensor.populate(&kmers)?;
+        Ok(tensor)
     }
 
     pub fn shape(&self) -> &Vec<usize> {
@@ -29,6 +48,10 @@ impl Tensor {
 
     pub fn data_ref(&self) -> &Vec<usize> {
         &self.data  
+    }
+
+    pub fn to_vec(&self) -> Vec<usize> {
+        self.data.clone()
     }
 
     pub fn get(&self, indices: &[usize]) -> Option<&usize> {
@@ -58,17 +81,17 @@ impl Tensor {
     }
 
 
-    pub fn populate(&mut self, kmers: &Vec<Vec<char>>) -> Result<(), String> {
+    pub fn populate(&mut self, kmers: &Vec<Kmer>) -> Result<(), String> {
         let dimensions = self.shape.len();
         const ALPHABET: [char; 4] = ['A', 'C', 'T', 'G'];
 
         for kmer in kmers {
-            if kmer.len() != dimensions {
-                return Err(format!("K-mer length {} does not match tensor dimensions {}", kmer.len(), dimensions));
+            if kmer.chars.len() != dimensions {
+                return Err(format!("K-mer length {} does not match tensor dimensions {}", kmer.chars.len(), dimensions));
             }
 
             // Convert k-mer to multi-dimensional index
-            let indices: Vec<usize> = kmer.iter().map(|&c| match c {
+            let indices: Vec<usize> = kmer.chars.iter().map(|&c| match c {
                 'A' => 0,
                 'C' => 1,
                 'T' => 2,
@@ -88,35 +111,100 @@ impl Tensor {
     }
 }
 
-pub fn l2norm(params: Parameters) -> f64 {
-    let chars1_tensor = kmer_tensor(&params.base_sequence, params.k);
-    let chars2_tensor = kmer_tensor(&params.modified_sequence, params.k);
+pub fn generate_kmers(sequence: &Vec<char>, k: usize) -> Vec<Kmer> {
+    let mut kmers: Vec<Kmer> = Vec::new();
 
-    let chars1_vector = chars1_tensor.data_ref();
-    let chars2_vector = chars2_tensor.data_ref();
+    if k > sequence.len() {
+        return kmers;
+    }
+
+    for i in 0..=(sequence.len() - k) {
+        let kmer = Kmer {
+            chars: sequence[i..i + k].to_vec(),
+            k: k
+        };
+        kmers.push(kmer);
+    }
+    kmers
+}
+
+pub fn l2norm(params: Parameters) -> Result<f64, String> {
+    let base_sequence_kmer_vector = kmer_tensor(&params.base_sequence, params.k)?.to_vec();
+    let modified_sequence_kmer_vector = kmer_tensor(&params.modified_sequence, params.k)?.to_vec();
 
     let mut distance = 0;
-    for (x1, x2) in chars1_vector.iter().zip(chars2_vector.iter()) {
+    for (x1, x2) in base_sequence_kmer_vector.iter().zip(modified_sequence_kmer_vector.iter()) {
         distance += (x1.max(x2) - x1.min(x2)).pow(2);
     }
-    let distance_f64 = distance as f64;
-    distance_f64.sqrt()
+    Ok((distance as f64).sqrt())
 }
 
-pub fn cosine_similarity(params: Parameters) -> f64 {
-    unimplemented!();
+pub fn cosine_similarity(params: Parameters) -> Result<f64, String> {
+    let base_sequence_kmer_vector = kmer_tensor(&params.base_sequence, params.k)?.to_vec();
+    let modified_sequence_kmer_vector = kmer_tensor(&params.modified_sequence, params.k)?.to_vec();
+
+    let mut base_sequence_magnitude = 0.0;
+    let mut modified_sequence_magnitude = 0.0;
+    let mut dot_product = 0.0;
+    for (base_char, mod_char) in base_sequence_kmer_vector.iter().zip(modified_sequence_kmer_vector.iter()) {
+        base_sequence_magnitude += base_char.clone() as f64 * base_char.clone() as f64;
+        modified_sequence_magnitude += mod_char.clone() as f64 * mod_char.clone() as f64;
+        dot_product += base_char.clone() as f64 * mod_char.clone() as f64;
+    }
+    if base_sequence_magnitude == 0.0 || modified_sequence_magnitude == 0.0 {
+        return Ok(0.0)
+    }
+    Ok(dot_product / (base_sequence_magnitude * modified_sequence_magnitude))
 }
-pub fn minimizer_l2_norm(params: Parameters) -> f64 {
-    unimplemented!();
+
+
+fn my_hash_function<T: Hash> (item: &T, seed: u64) -> usize {
+    let mut hasher = SeaHasher::with_seeds(seed, seed, seed, seed);
+    item.hash(&mut hasher);
+    hasher.finish() as usize
 }
-pub fn strobemer(params: Parameters) -> f64 {
+
+pub fn minimizer_l2_norm(params: Parameters) -> Result<f64, String> {
+    let mut base_minimizers: Vec<Kmer> = Vec::new();
+    let mut mod_minimizers: Vec<Kmer> = Vec::new();
+
+    let smallest_sequence_length = std::cmp::min(params.base_sequence.len(), params.modified_sequence.len());
+    for idx in 0..smallest_sequence_length {
+        let base_window = &params.base_sequence[idx..params.w].to_vec();
+        let mod_window = &params.modified_sequence[idx..params.w].to_vec();
+
+        let base_kmers = sequence::generate_kmers(base_window, params.k);
+        let mod_kmers = sequence::generate_kmers(mod_window, params.k);
+
+        let seed: u64 = 69;
+        let base_minimizer = Kmer {
+            chars: base_kmers.iter().min_by_key(|item| my_hash_function(item, seed)).unwrap().clone(),
+            k: params.k
+        };
+        let mod_minimizer = Kmer {
+            chars: mod_kmers.iter().min_by_key(|item| my_hash_function(item, seed)).unwrap().clone(),
+            k: params.k
+        };
+
+        base_minimizers.push(base_minimizer);
+        mod_minimizers.push(mod_minimizer);
+    }
+    let mut base_tensor = Tensor::new_empty(params.k);
+    base_tensor.populate(&base_minimizers)?;
+    let mut mod_tensor = Tensor::new_empty(params.k);
+    mod_tensor.populate(&mod_minimizers)?;
+
+    let mut distance = 0;
+    for (x1, x2) in base_tensor.data_ref().iter().zip(mod_tensor.data_ref().iter()) {
+        distance += (x1.max(x2) - x1.min(x2)).pow(2);
+    }
+    Ok((distance as f64).sqrt())
+    
+}
+pub fn strobemer(params: Parameters) -> Result<f64, String> {
     unimplemented!();
 }
 
-pub fn kmer_tensor(sequence: &Vec<char>, k: usize) -> Tensor {
-    let kmers = sequence::generate_kmers(&sequence, k);
-
-    let mut tensor = Tensor::new(vec![4; k], 0);
-    tensor.populate(&kmers).expect("Failed to populate tensor");
-    tensor
+pub fn kmer_tensor(sequence: &Vec<char>, k: usize) -> Result<Tensor, String> {
+    Tensor::construct(&sequence, k)
 }
