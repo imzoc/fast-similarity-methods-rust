@@ -84,22 +84,21 @@ impl Tensor {
         Some(index)
     }
 
-    pub fn populate(&mut self, kmers: &Vec<Kmer>) -> Result<()> {
+    pub fn populate(&mut self, kmers: &Vec<&[char]>) -> Result<()> {
         let dimensions = self.shape.len();
         //const ALPHABET: [char; 4] = ['A', 'C', 'T', 'G']; // unused
 
         for kmer in kmers {
-            if kmer.chars.len() != dimensions {
+            if kmer.len() != dimensions {
                 bail!(
                     "K-mer length {} does not match tensor dimensions {}",
-                    kmer.chars.len(),
+                    kmer.len(),
                     dimensions
                 );
             }
 
             // Convert k-mer to multi-dimensional index
             let indices: Vec<usize> = kmer
-                .chars
                 .iter()
                 .map(|&c| match c {
                     'A' => 0,
@@ -123,7 +122,7 @@ impl Tensor {
     }
 }
 
-pub fn generate_kmers(sequence: &[char], k: usize) -> Vec<Kmer> {
+pub fn generate_kmers(sequence: &[char], k: usize) -> Vec<&[char]> {
     let mut kmers = vec![];
 
     if k > sequence.len() {
@@ -131,11 +130,7 @@ pub fn generate_kmers(sequence: &[char], k: usize) -> Vec<Kmer> {
     }
 
     for i in 0..=(sequence.len() - k) {
-        let kmer = Kmer {
-            chars: sequence[i..i + k].to_vec(),
-            k,
-        };
-        kmers.push(kmer);
+        kmers.push(&sequence[i..i + k]);
     }
     kmers
 }
@@ -197,8 +192,8 @@ fn my_hash_function<T: Hash> (item: &T, seed: u64) -> u64 {
 }
 
 pub fn minimizer_l2_norm(params: Parameters) -> Result<f64> {
-    let mut base_minimizers: Vec<Kmer> = Vec::new();
-    let mut mod_minimizers: Vec<Kmer> = Vec::new();
+    let mut base_minimizers: Vec<&[char]> = Vec::new();
+    let mut mod_minimizers: Vec<&[char]> = Vec::new();
 
     let smallest_sequence_length = std::cmp::min(
         params.base_sequence.len(),
@@ -206,29 +201,21 @@ pub fn minimizer_l2_norm(params: Parameters) -> Result<f64> {
     );
 
     for idx in 0..smallest_sequence_length {
-        let base_window = &params.base_sequence[idx..params.w].to_vec();
-        let mod_window = &params.modified_sequence[idx..params.w].to_vec();
+        let base_window = &params.base_sequence[idx..params.w];
+        let mod_window = &params.modified_sequence[idx..params.w];
 
         let base_kmers = generate_kmers(base_window, params.k);
         let mod_kmers = generate_kmers(mod_window, params.k);
 
         let seed: u64 = 69;
-        let base_minimizer = Kmer {
-            chars: base_kmers
+        let base_minimizer = base_kmers
                 .iter()
                 .min_by_key(|item| my_hash_function(item, seed))
-                .unwrap()
-                .clone(),
-            k: params.k,
-        };
-        let mod_minimizer = Kmer {
-            chars: mod_kmers
+                .unwrap();
+        let mod_minimizer = mod_kmers
                 .iter()
                 .min_by_key(|item| my_hash_function(item, seed))
-                .unwrap()
-                .clone(),
-            k: params.k,
-        };
+                .unwrap();
 
         base_minimizers.push(base_minimizer);
         mod_minimizers.push(mod_minimizer);
@@ -343,14 +330,14 @@ mod unit_tests {
         let kmers = generate_kmers(&['A', 'C', 'G', 'T'], 1);
         assert_eq!(kmers.len(), 4);
         for (i, c) in "ACGT".chars().enumerate() {
-            assert_eq!(kmers[i].chars, [c]);
+            assert_eq!(kmers[i], [c]);
         }
 
         let kmers = generate_kmers(&['A', 'C', 'G', 'T'], 2);
         assert_eq!(kmers.len(), 3);
-        assert_eq!(kmers[0].chars, ['A', 'C']);
-        assert_eq!(kmers[1].chars, ['C', 'G']);
-        assert_eq!(kmers[2].chars, ['G', 'T']);
+        assert_eq!(kmers[0], ['A', 'C']);
+        assert_eq!(kmers[1], ['C', 'G']);
+        assert_eq!(kmers[2], ['G', 'T']);
     }
 
     #[test]
