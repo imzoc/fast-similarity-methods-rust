@@ -4,6 +4,8 @@ use seahash::SeaHasher;
 use std::hash::{Hash, Hasher};
 
 #[derive(Debug)]
+#[derive(Hash)]
+#[derive(Clone)]
 pub struct Kmer {
     pub chars: Vec<char>,
     pub k: usize,
@@ -187,10 +189,11 @@ pub fn cosine_similarity(params: Parameters) -> Result<f64> {
     Ok(dot_product / (base_sequence_magnitude * modified_sequence_magnitude))
 }
 
-fn my_hash_function<T: Hash>(item: &T, seed: u64) -> usize {
+
+fn my_hash_function<T: Hash> (item: &T, seed: u64) -> u64 {
     let mut hasher = SeaHasher::with_seeds(seed, seed, seed, seed);
     item.hash(&mut hasher);
-    hasher.finish() as usize
+    hasher.finish()
 }
 
 pub fn minimizer_l2_norm(params: Parameters) -> Result<f64> {
@@ -206,8 +209,8 @@ pub fn minimizer_l2_norm(params: Parameters) -> Result<f64> {
         let base_window = &params.base_sequence[idx..params.w].to_vec();
         let mod_window = &params.modified_sequence[idx..params.w].to_vec();
 
-        let base_kmers = sequence::generate_kmers(base_window, params.k);
-        let mod_kmers = sequence::generate_kmers(mod_window, params.k);
+        let base_kmers = generate_kmers(base_window, params.k);
+        let mod_kmers = generate_kmers(mod_window, params.k);
 
         let seed: u64 = 69;
         let base_minimizer = Kmer {

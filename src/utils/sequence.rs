@@ -17,24 +17,6 @@ pub fn generate_sequence_chars(n: usize) -> Vec<char> {
     sequence_chars
 }
 
-/**
- * It returns a vector of references to specific parts of the original sequence.
- * This vector is the LITERAL k-mer contents of the string--it references to the actual string!
- */
-pub fn generate_kmers(sequence: &Vec<char>, k: usize) -> Vec<Vec<char>> {
-    let mut kmers = Vec::new();
-
-    if k > sequence.len() {
-        return kmers;
-    }
-
-    for i in 0..=(sequence.len() - k) {
-        let kmer = sequence[i..i + k].to_vec();
-        kmers.push(kmer);
-    }
-    kmers
-}
-
 pub fn generate_pair(base_length: usize, distance: usize) -> (Vec<char>, Vec<char>) {
     let base_sequence_chars: Vec<char> = generate_sequence_chars(base_length);
     let mut modified_sequence_chars: Vec<char> = base_sequence_chars.clone();
