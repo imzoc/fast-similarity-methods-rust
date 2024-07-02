@@ -10,4 +10,4 @@ big:
 	$(GEN_COMP) -s $(SEQ_1K) -o tests/outputs/out1k.csv
 
 smol_minimizer:
-	$(GEN_COMP) -s $(SEQ_1K) -e $(MINIMIZER) -o tests/outputs/out1k_minimizer.csv
+	$(GEN_COMP) -s $(SEQ_3) -e $(MINIMIZER) -o tests/outputs/out3_minimizer.csv

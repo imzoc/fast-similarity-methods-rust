@@ -129,9 +129,9 @@ pub fn generate_kmers(sequence: &[char], k: usize) -> Vec<&[char]> {
 
 pub fn l2norm(params: Parameters) -> Result<f64> {
     let base_sequence_kmer_vector =
-        kmer_tensor(&params.base_sequence, params.k)?.to_vec();
+        Tensor::construct(&params.base_sequence, params.k)?.to_vec();
     let modified_sequence_kmer_vector =
-        kmer_tensor(&params.modified_sequence, params.k)?.to_vec();
+        Tensor::construct(&params.modified_sequence, params.k)?.to_vec();
 
     let mut distance = 0;
     for (x1, x2) in base_sequence_kmer_vector
@@ -145,12 +145,12 @@ pub fn l2norm(params: Parameters) -> Result<f64> {
 
 pub fn cosine_similarity(params: Parameters) -> Result<f64> {
     let base_sequence_kmer_vector =
-        kmer_tensor(&params.base_sequence, params.k)?
+        Tensor::construct(&params.base_sequence, params.k)?
             .to_vec()
             .into_iter()
             .map(|v| v as f64);
     let modified_sequence_kmer_vector =
-        kmer_tensor(&params.modified_sequence, params.k)?
+        Tensor::construct(&params.modified_sequence, params.k)?
             .to_vec()
             .into_iter()
             .map(|v| v as f64);
@@ -192,9 +192,9 @@ pub fn minimizer_l2_norm(params: Parameters) -> Result<f64> {
         params.modified_sequence.len(),
     );
 
-    for idx in 0..smallest_sequence_length {
-        let base_window = &params.base_sequence[idx..params.w];
-        let mod_window = &params.modified_sequence[idx..params.w];
+    for idx in 0..smallest_sequence_length-params.w {
+        let base_window = &params.base_sequence[idx..idx + params.w];
+        let mod_window = &params.modified_sequence[idx..idx + params.w];
 
         let base_kmers = generate_kmers(base_window, params.k);
         let mod_kmers = generate_kmers(mod_window, params.k);
@@ -203,14 +203,18 @@ pub fn minimizer_l2_norm(params: Parameters) -> Result<f64> {
         let base_minimizer = base_kmers
                 .iter()
                 .min_by_key(|item| my_hash_function(item, seed))
-                .unwrap();
+                .ok_or_else(||
+                    anyhow!("Window={:?}; k={:?}; idx={:?}; smallest sequence length={:?}", base_window, &params.k, idx, smallest_sequence_length)
+                );
         let mod_minimizer = mod_kmers
                 .iter()
                 .min_by_key(|item| my_hash_function(item, seed))
-                .unwrap();
+                .ok_or_else(||
+                    anyhow!("Mod window: {:?}; mod {:?}-mers: {:?}", mod_window, &params.k, mod_kmers)
+                );
 
-        base_minimizers.push(base_minimizer);
-        mod_minimizers.push(mod_minimizer);
+        base_minimizers.push(base_minimizer?);
+        mod_minimizers.push(mod_minimizer?);
     }
 
     let mut base_tensor = Tensor::new_empty(params.k);
@@ -234,29 +238,13 @@ pub fn strobemer(_params: Parameters) -> Result<f64> {
     unimplemented!();
 }
 
-pub fn kmer_tensor(sequence: &Vec<char>, k: usize) -> Result<Tensor> {
-    Tensor::construct(sequence, k)
-}
-
 #[cfg(test)]
 mod unit_tests {
     use super::{
-        cosine_similarity, generate_kmers, kmer_tensor, l2norm,
+        cosine_similarity, generate_kmers, l2norm,
         minimizer_l2_norm, strobemer, Parameters, Tensor,
     };
     use pretty_assertions::assert_eq;
-
-    #[test]
-    fn test_kmer_tensor() {
-        let res = kmer_tensor(&vec!['A', 'C', 'G', 'T'], 2);
-        assert!(res.is_ok());
-
-        let t = res.unwrap();
-        assert_eq!(t.shape.len(), 2);
-        assert_eq!(t.shape, [4; 2]);
-        assert_eq!(t.data.len(), 16);
-        assert_eq!(t.data, [0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0,]);
-    }
 
     #[test]
     fn test_strobemer() {
