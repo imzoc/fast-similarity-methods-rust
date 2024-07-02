@@ -1,8 +1,7 @@
 use crate::utils::sequence;
 use anyhow::{anyhow, bail, Result};
-use std::hash::{Hash, Hasher};
-
 use seahash::SeaHasher;
+use std::hash::{Hash, Hasher};
 
 #[derive(Debug)]
 pub struct Kmer {
@@ -10,11 +9,13 @@ pub struct Kmer {
     pub k: usize,
 }
 
+#[derive(Debug)]
 pub struct Tensor {
     pub data: Vec<usize>,
     pub shape: Vec<usize>,
 }
 
+#[derive(Debug)]
 pub struct Parameters {
     pub k: usize,
     pub w: usize,
@@ -83,7 +84,7 @@ impl Tensor {
 
     pub fn populate(&mut self, kmers: &Vec<Kmer>) -> Result<()> {
         let dimensions = self.shape.len();
-        const ALPHABET: [char; 4] = ['A', 'C', 'T', 'G'];
+        //const ALPHABET: [char; 4] = ['A', 'C', 'T', 'G']; // unused
 
         for kmer in kmers {
             if kmer.chars.len() != dimensions {
@@ -253,4 +254,128 @@ pub fn strobemer(_params: Parameters) -> Result<f64> {
 
 pub fn kmer_tensor(sequence: &Vec<char>, k: usize) -> Result<Tensor> {
     Tensor::construct(sequence, k)
+}
+
+#[cfg(test)]
+mod unit_tests {
+    use super::{
+        cosine_similarity, generate_kmers, kmer_tensor, l2norm,
+        minimizer_l2_norm, strobemer, Parameters, Tensor,
+    };
+    use pretty_assertions::assert_eq;
+
+    #[test]
+    fn test_kmer_tensor() {
+        let res = kmer_tensor(&vec!['A', 'C', 'G', 'T'], 2);
+        assert!(res.is_ok());
+
+        let t = res.unwrap();
+        assert_eq!(t.shape.len(), 2);
+        assert_eq!(t.shape, [4; 2]);
+        assert_eq!(t.data.len(), 16);
+        assert_eq!(t.data, [0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0,]);
+    }
+
+    #[test]
+    fn test_strobemer() {
+        let p = Parameters {
+            k: 1,
+            w: 1,
+            base_sequence: vec!['A', 'C', 'G', 'T'],
+            modified_sequence: vec!['T', 'C', 'A', 'T'],
+        };
+        let res = strobemer(p);
+        assert!(res.is_ok());
+        assert_eq!(res.unwrap(), 0.);
+    }
+
+    #[test]
+    fn test_minimizer_l2_norm() {
+        // Some less trivial example?
+        let p = Parameters {
+            k: 1,
+            w: 1,
+            base_sequence: vec!['A', 'C', 'G', 'T'],
+            modified_sequence: vec!['T', 'C', 'A', 'T'],
+        };
+
+        // This fails
+        let res = minimizer_l2_norm(p);
+        assert!(res.is_ok());
+        assert_eq!(res.unwrap(), 0.);
+    }
+
+    #[test]
+    fn test_cosine_similarity() {
+        // Some less trivial example?
+        let p = Parameters {
+            k: 1,
+            w: 1,
+            base_sequence: vec!['A', 'C', 'G', 'T'],
+            modified_sequence: vec!['T', 'C', 'A', 'T'],
+        };
+
+        let res = cosine_similarity(p);
+        assert!(res.is_ok());
+        assert_eq!(res.unwrap(), 0.16666666666666666);
+    }
+
+    #[test]
+    fn test_l2norm() {
+        // Some less trivial example?
+        let p = Parameters {
+            k: 1,
+            w: 1,
+            base_sequence: vec!['A', 'C', 'G', 'T'],
+            modified_sequence: vec!['T', 'C', 'A', 'T'],
+        };
+
+        let res = l2norm(p);
+        assert!(res.is_ok());
+        assert_eq!(res.unwrap(), 1.4142135623730951);
+    }
+
+    #[test]
+    fn test_generate_kmers() {
+        let kmers = generate_kmers(&['A', 'C', 'G', 'T'], 1);
+        assert_eq!(kmers.len(), 4);
+        for (i, c) in "ACGT".chars().enumerate() {
+            assert_eq!(kmers[i].chars, [c]);
+        }
+
+        let kmers = generate_kmers(&['A', 'C', 'G', 'T'], 2);
+        assert_eq!(kmers.len(), 3);
+        assert_eq!(kmers[0].chars, ['A', 'C']);
+        assert_eq!(kmers[1].chars, ['C', 'G']);
+        assert_eq!(kmers[2].chars, ['G', 'T']);
+    }
+
+    #[test]
+    fn tensor_new_empty() {
+        // Should 0 be allowed?
+        let t = Tensor::new_empty(0);
+        assert_eq!(t.shape.len(), 0);
+        assert_eq!(t.shape, &[]);
+        assert_eq!(t.data.len(), 1);
+        assert_eq!(t.data, vec![0]);
+
+        let t = Tensor::new_empty(2);
+        assert_eq!(t.shape.len(), 2);
+        assert_eq!(t.shape, [4; 2]);
+        assert_eq!(t.data.len(), 16);
+        assert_eq!(t.data, [0; 16]);
+    }
+
+    #[test]
+    fn tensor_construct() {
+        // Use a less trivial sequence?
+        let res = Tensor::construct(&['A', 'C', 'G', 'T'], 2);
+        assert!(res.is_ok());
+
+        let t = res.unwrap();
+        assert_eq!(t.data.len(), 16);
+        assert_eq!(t.data, [0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0,]);
+        assert_eq!(t.shape.len(), 2);
+        assert_eq!(t.shape, [4; 2]);
+    }
 }
