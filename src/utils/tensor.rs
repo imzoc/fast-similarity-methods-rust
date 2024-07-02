@@ -4,14 +4,6 @@ use seahash::SeaHasher;
 use std::hash::{Hash, Hasher};
 
 #[derive(Debug)]
-#[derive(Hash)]
-#[derive(Clone)]
-pub struct Kmer {
-    pub chars: Vec<char>,
-    pub k: usize,
-}
-
-#[derive(Debug)]
 pub struct Tensor {
     pub data: Vec<usize>,
     pub shape: Vec<usize>,
