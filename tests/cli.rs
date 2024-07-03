@@ -7,8 +7,8 @@ use tempfile::NamedTempFile;
 
 const GEN_COMP: &str = "generate_comparison_data";
 const SEQUENCES_3: &str = "tests/inputs/sequences_3.csv";
-const SEQUENCES_1K: &str = "tests/inputs/sequences_1000.csv";
-const OUTPUT_1K: &str = "tests/outputs/data_1k.csv";
+const SEQUENCES_1K: &str = "tests/inputs/sequences_2001.csv";
+const OUTPUT_1K: &str = "tests/outputs/data_2001.csv";
 const OUTPUT_3: &str = "tests/outputs/data_3.csv";
 
 // --------------------------------------------------

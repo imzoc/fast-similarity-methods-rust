@@ -1,4 +1,3 @@
-use crate::utils::sequence;
 use anyhow::{anyhow, bail, Result};
 use seahash::SeaHasher;
 use std::hash::{Hash, Hasher};
@@ -127,6 +126,12 @@ pub fn generate_kmers(sequence: &[char], k: usize) -> Vec<&[char]> {
     kmers
 }
 
+/* This similarity estimation method returns the l2norm between two strings'
+ * kmer vectors. Recall, a string's kmer vector is a vector where every
+ * dimension represents the number of times a certain kmer appears in that string.
+ * 
+ * Thus, a low l2 norm predicts that two strings are similar, and vice versa.
+ */
 pub fn l2norm(params: Parameters) -> Result<f64> {
     let base_sequence_kmer_vector =
         Tensor::construct(&params.base_sequence, params.k)?.to_vec();
@@ -239,86 +244,126 @@ pub fn strobemer(_params: Parameters) -> Result<f64> {
 }
 
 #[cfg(test)]
-mod unit_tests {
-    use super::{
-        cosine_similarity, generate_kmers, l2norm,
-        minimizer_l2_norm, strobemer, Parameters, Tensor,
-    };
+mod similarity_method_tests {
+    use crate::utils::tensor::{cosine_similarity, minimizer_l2_norm, strobemer};
+
+    use super::{Parameters, l2norm};
     use pretty_assertions::assert_eq;
 
-    #[test]
-    fn test_strobemer() {
-        let p = Parameters {
-            k: 1,
-            w: 1,
-            base_sequence: vec!['A', 'C', 'G', 'T'],
-            modified_sequence: vec!['T', 'C', 'A', 'T'],
-        };
-        let res = strobemer(p);
-        assert!(res.is_ok());
-        assert_eq!(res.unwrap(), 0.);
-    }
-
-    #[test]
-    fn test_minimizer_l2_norm() {
-        // Some less trivial example?
-        let p = Parameters {
-            k: 1,
-            w: 1,
-            base_sequence: vec!['A', 'C', 'G', 'T'],
-            modified_sequence: vec!['T', 'C', 'A', 'T'],
-        };
-
-        // This fails
-        let res = minimizer_l2_norm(p);
-        assert!(res.is_ok());
-        assert_eq!(res.unwrap(), 0.);
-    }
-
-    #[test]
-    fn test_cosine_similarity() {
-        // Some less trivial example?
-        let p = Parameters {
-            k: 1,
-            w: 1,
-            base_sequence: vec!['A', 'C', 'G', 'T'],
-            modified_sequence: vec!['T', 'C', 'A', 'T'],
-        };
-
-        let res = cosine_similarity(p);
-        assert!(res.is_ok());
-        assert_eq!(res.unwrap(), 0.16666666666666666);
-    }
-
-    #[test]
-    fn test_l2norm() {
-        // Some less trivial example?
-        let p = Parameters {
-            k: 1,
-            w: 1,
-            base_sequence: vec!['A', 'C', 'G', 'T'],
-            modified_sequence: vec!['T', 'C', 'A', 'T'],
-        };
-
+    fn test_l2norm(p: Parameters, expected: f64)  {
         let res = l2norm(p);
         assert!(res.is_ok());
-        assert_eq!(res.unwrap(), 1.4142135623730951);
+        assert_eq!(res.unwrap(), expected);
+    }
+
+    // START l2_norm TESTS
+    #[test]
+    fn test_l2norm_equal_k1() {
+        // k=1, same number of each character, should result in l2norm = 0.0
+        let p = Parameters {
+            k: 1,
+            w: 1, // irrelevant for l2norm
+            base_sequence: "ACGT".chars().collect(),
+            modified_sequence: "GCAT".chars().collect(),
+        };
+        test_l2norm(p, 0.0);
     }
 
     #[test]
-    fn test_generate_kmers() {
-        let kmers = generate_kmers(&['A', 'C', 'G', 'T'], 1);
-        assert_eq!(kmers.len(), 4);
-        for (i, c) in "ACGT".chars().enumerate() {
-            assert_eq!(kmers[i], [c]);
-        }
-
-        let kmers = generate_kmers(&['A', 'C', 'G', 'T'], 2);
-        assert_eq!(kmers.len(), 3);
-        assert_eq!(kmers[0], ['A', 'C']);
-        assert_eq!(kmers[1], ['C', 'G']);
-        assert_eq!(kmers[2], ['G', 'T']);
+    fn test_l2norm_equal_k2() {
+        // k=2, same number of 2-mers, should result in l2norm = 0.0
+        let p = Parameters {
+            k: 2,
+            w: 1, // irrelevant for l2norm
+            base_sequence: "ACGTA".chars().collect(),
+            modified_sequence: "CGTAC".chars().collect(),
+        };
+        test_l2norm(p, 0.0);
     }
+
+    #[test]
+    fn test_l2norm_unequal_k1() {
+        // k=1, unequal character set, should result in l2norm = sqrt(2)
+        let p = Parameters {
+            k: 1,
+            w: 1, // irrelevant for l2norm
+            base_sequence: "GTTTTT".chars().collect(),
+            modified_sequence: "ATTTTT".chars().collect(),
+        };
+        test_l2norm(p, 1.4142135623730951);
+    }
+
+    #[test]
+    fn test_l2norm_unequal_k2() {
+        // k=2, unequal 2-mer set, should result in l2norm = sqrt(2)
+        let p = Parameters {
+            k: 1,
+            w: 1, // irrelevant for l2norm
+            base_sequence: "GTTTTT".chars().collect(),
+            modified_sequence: "ATTTTT".chars().collect(),
+        };
+        test_l2norm(p, 1.4142135623730951);
+    }
+
+    fn test_cosine_similarity(p: Parameters, expected: f64) {
+        let res = cosine_similarity(p);
+        assert!(res.is_ok());
+        assert_eq!(res.unwrap(), expected);
+    }
+
+    #[test]
+    fn test_cosine_similarity_equal_k1() {
+        // k=2, unequal 2-mer set, should result in l2norm = sqrt(2)
+        let p = Parameters {
+            k: 1,
+            w: 1, // irrelevant for l2norm
+            base_sequence: "ACCT".chars().collect(),
+            modified_sequence: "ACCG".chars().collect(),
+        };
+        test_cosine_similarity(p, 1.4142135623730951);
+    }
+
+    fn test_minimizer_l2_norm(p: Parameters, expected: f64) {
+        let res = minimizer_l2_norm(p);
+        assert!(res.is_ok());
+        assert_eq!(res.unwrap(), expected);
+    }
+
+    #[test]
+    fn test_minimizer_l2_norm_equal_k1() {
+        // Some less trivial example?
+        let p = Parameters {
+            k: 1,
+            w: 1,
+            base_sequence: vec!['A', 'C', 'G', 'T'],
+            modified_sequence: vec!['T', 'C', 'A', 'T'],
+        };
+        test_minimizer_l2_norm(p, 1.4142135623730951);
+    }
+
+
+    fn test_strobemer(p: Parameters, expected: f64) {
+        let res = strobemer(p);
+        assert!(res.is_ok());
+        assert_eq!(res.unwrap(), expected);
+    }
+    #[test]
+    fn test_strobemer_trivial_k1() {
+        let p = Parameters {
+            k: 1,
+            w: 1,
+            base_sequence: vec!['A', 'C', 'G', 'T'],
+            modified_sequence: vec!['T', 'C', 'A', 'T'],
+        };
+        test_strobemer(p, 0.0);
+    }
+}
+
+
+#[cfg(test)]
+mod tensor_struct_tests {
+    use super::Tensor;
+    use pretty_assertions::assert_eq;
 
     #[test]
     fn tensor_new_empty() {
@@ -347,5 +392,28 @@ mod unit_tests {
         assert_eq!(t.data, [0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0,]);
         assert_eq!(t.shape.len(), 2);
         assert_eq!(t.shape, [4; 2]);
+    }
+}
+
+
+
+#[cfg(test)]
+mod standalone_function_tests {
+    use super::generate_kmers;
+    use pretty_assertions::assert_eq;
+
+    #[test]
+    fn test_generate_kmers() {
+        let kmers = generate_kmers(&['A', 'C', 'G', 'T'], 1);
+        assert_eq!(kmers.len(), 4);
+        for (i, c) in "ACGT".chars().enumerate() {
+            assert_eq!(kmers[i], [c]);
+        }
+
+        let kmers = generate_kmers(&['A', 'C', 'G', 'T'], 2);
+        assert_eq!(kmers.len(), 3);
+        assert_eq!(kmers[0], ['A', 'C']);
+        assert_eq!(kmers[1], ['C', 'G']);
+        assert_eq!(kmers[2], ['G', 'T']);
     }
 }
