@@ -1,6 +1,7 @@
 use anyhow::{anyhow, bail, Result};
 use seahash::SeaHasher;
 use std::hash::{Hash, Hasher};
+use std::cmp::{min, max};
 
 #[derive(Debug)]
 pub struct Tensor {
@@ -163,22 +164,17 @@ pub fn cosine_similarity(params: Parameters) -> Result<f64> {
     let mut base_sequence_magnitude = 0.0;
     let mut modified_sequence_magnitude = 0.0;
     let mut dot_product = 0.0;
-    for (base_char, mod_char) in
+    for (base_element, mod_element) in
         base_sequence_kmer_vector.zip(modified_sequence_kmer_vector)
     {
-        //base_sequence_magnitude +=
-        //    base_char.clone() as f64 * base_char.clone() as f64;
-        //modified_sequence_magnitude +=
-        //    mod_char.clone() as f64 * mod_char.clone() as f64;
-        //dot_product += base_char.clone() as f64 * mod_char.clone() as f64;
-        base_sequence_magnitude += base_char * base_char;
-        modified_sequence_magnitude += mod_char * mod_char;
-        dot_product += base_char * mod_char;
+        base_sequence_magnitude += base_element * base_element;
+        modified_sequence_magnitude += mod_element * mod_element;
+        dot_product += base_element * mod_element;
     }
     if base_sequence_magnitude == 0.0 || modified_sequence_magnitude == 0.0 {
         return Ok(0.0);
     }
-    Ok(dot_product / (base_sequence_magnitude * modified_sequence_magnitude))
+    Ok(dot_product / (base_sequence_magnitude.sqrt() * modified_sequence_magnitude.sqrt()))
 }
 
 
@@ -233,7 +229,7 @@ pub fn minimizer_l2_norm(params: Parameters) -> Result<f64> {
         .iter()
         .zip(mod_tensor.data_ref().iter())
     {
-        distance += (x1.max(x2) - x1.min(x2)).pow(2);
+        distance += (max(x1, x2) - min(x1, x2)).pow(2);
     }
 
     Ok((distance as f64).sqrt())
@@ -250,13 +246,12 @@ mod similarity_method_tests {
     use super::{Parameters, l2norm};
     use pretty_assertions::assert_eq;
 
+    // KMER VECTOR L2 NORM TESTS
     fn test_l2norm(p: Parameters, expected: f64)  {
         let res = l2norm(p);
         assert!(res.is_ok());
         assert_eq!(res.unwrap(), expected);
     }
-
-    // START l2_norm TESTS
     #[test]
     fn test_l2norm_equal_k1() {
         // k=1, same number of each character, should result in l2norm = 0.0
@@ -268,7 +263,6 @@ mod similarity_method_tests {
         };
         test_l2norm(p, 0.0);
     }
-
     #[test]
     fn test_l2norm_equal_k2() {
         // k=2, same number of 2-mers, should result in l2norm = 0.0
@@ -280,7 +274,6 @@ mod similarity_method_tests {
         };
         test_l2norm(p, 0.0);
     }
-
     #[test]
     fn test_l2norm_unequal_k1() {
         // k=1, unequal character set, should result in l2norm = sqrt(2)
@@ -292,7 +285,6 @@ mod similarity_method_tests {
         };
         test_l2norm(p, 1.4142135623730951);
     }
-
     #[test]
     fn test_l2norm_unequal_k2() {
         // k=2, unequal 2-mer set, should result in l2norm = sqrt(2)
@@ -305,42 +297,117 @@ mod similarity_method_tests {
         test_l2norm(p, 1.4142135623730951);
     }
 
+    // COSINE SIMILARITY TESTS
     fn test_cosine_similarity(p: Parameters, expected: f64) {
         let res = cosine_similarity(p);
         assert!(res.is_ok());
         assert_eq!(res.unwrap(), expected);
     }
-
     #[test]
     fn test_cosine_similarity_equal_k1() {
         // k=2, unequal 2-mer set, should result in l2norm = sqrt(2)
         let p = Parameters {
             k: 1,
             w: 1, // irrelevant for l2norm
-            base_sequence: "ACCT".chars().collect(),
-            modified_sequence: "ACCG".chars().collect(),
+            base_sequence: "ACTG".chars().collect(),
+            modified_sequence: "CTAG".chars().collect(),
         };
-        test_cosine_similarity(p, 1.4142135623730951);
+        test_cosine_similarity(p, 1.0);
+    }
+    #[test]
+    fn test_cosine_similarity_equal_k2() {
+        // k=2, unequal 2-mer set, should result in l2norm = sqrt(2)
+        let p = Parameters {
+            k: 2,
+            w: 1, // irrelevant for l2norm
+            base_sequence: "ACTGA".chars().collect(),
+            modified_sequence: "CTGAC".chars().collect(),
+        };
+        test_cosine_similarity(p, 1.0);
+    }
+    #[test]
+    fn test_cosine_similarity_unequal_k2() {
+        // k=2, unequal 2-mer set, should result in l2norm = sqrt(2)
+        let p = Parameters {
+            k: 2,
+            w: 1, // irrelevant for l2norm
+            base_sequence: "ACTGG".chars().collect(),
+            modified_sequence: "CTGAC".chars().collect(),
+        };
+        test_cosine_similarity(p, 0.75);
+    }
+    #[test]
+    fn test_cosine_similarity_unequal_k1() {
+        // k=2, unequal 2-mer set, should result in l2norm = sqrt(2)
+        let p = Parameters {
+            k: 1,
+            w: 1, // irrelevant for l2norm
+            base_sequence: "AG".chars().collect(),
+            modified_sequence: "AT".chars().collect(),
+        };
+        test_cosine_similarity(p, 0.4999999999999999);
     }
 
+    // MINIMIZER L2 NORM TESTS
     fn test_minimizer_l2_norm(p: Parameters, expected: f64) {
         let res = minimizer_l2_norm(p);
         assert!(res.is_ok());
         assert_eq!(res.unwrap(), expected);
     }
-
     #[test]
-    fn test_minimizer_l2_norm_equal_k1() {
+    fn test_minimizer_l2_norm_equal_k1_w4() {
         // Some less trivial example?
         let p = Parameters {
             k: 1,
-            w: 1,
-            base_sequence: vec!['A', 'C', 'G', 'T'],
-            modified_sequence: vec!['T', 'C', 'A', 'T'],
+            w: 4,
+            base_sequence: "ACTG".chars().collect(),
+            modified_sequence: "ACTG".chars().collect(),
         };
-        test_minimizer_l2_norm(p, 1.4142135623730951);
+        test_minimizer_l2_norm(p, 0.0);
     }
-
+    #[test]
+    fn test_minimizer_l2_norm_equal_k2() {
+        // Some less trivial example?
+        let p = Parameters {
+            k: 2,
+            w: 4,
+            base_sequence: "ACTG".chars().collect(),
+            modified_sequence: "ACTG".chars().collect(),
+        };
+        test_minimizer_l2_norm(p, 0.0);
+    }
+    #[test]
+    fn test_minimizer_l2_norm_unequal_k1_w4() {
+        // Some less trivial example?
+        let p = Parameters {
+            k: 1,
+            w: 4,
+            base_sequence: "ACTA".chars().collect(),
+            modified_sequence: "ACTG".chars().collect(),
+        };
+        test_minimizer_l2_norm(p, 0.0);
+    }
+    #[test]
+    fn test_minimizer_l2_norm_unequal_k2_w4() {
+        let p = Parameters {
+            k: 2,
+            w: 4,
+            base_sequence: "ACTC".chars().collect(),
+            modified_sequence: "ACTG".chars().collect(),
+        };
+        test_minimizer_l2_norm(p, 0.0);
+    }
+    #[test]
+    fn test_minimizer_l2_norm_unequal_k1_w4_long() {
+        // I should study this one a bit more...
+        let p = Parameters {
+            k: 2,
+            w: 4,
+            base_sequence: "AAAATTTT".chars().collect(),
+            modified_sequence: "AAAAGGGG".chars().collect(),
+        };
+        test_minimizer_l2_norm(p, 0.0);
+    }
 
     fn test_strobemer(p: Parameters, expected: f64) {
         let res = strobemer(p);
@@ -348,7 +415,7 @@ mod similarity_method_tests {
         assert_eq!(res.unwrap(), expected);
     }
     #[test]
-    fn test_strobemer_trivial_k1() {
+    fn test_strobemer_equal_k1() {
         let p = Parameters {
             k: 1,
             w: 1,
@@ -403,8 +470,10 @@ mod standalone_function_tests {
     use pretty_assertions::assert_eq;
 
     #[test]
-    fn test_generate_kmers() {
-        let kmers = generate_kmers(&['A', 'C', 'G', 'T'], 1);
+    fn test_generate_kmers_k1() {
+        let seq: Vec<char> = "ACGT"
+            .chars().collect();
+        let kmers = generate_kmers(&seq, 1);
         assert_eq!(kmers.len(), 4);
         for (i, c) in "ACGT".chars().enumerate() {
             assert_eq!(kmers[i], [c]);
