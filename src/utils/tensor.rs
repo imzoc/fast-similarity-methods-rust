@@ -20,7 +20,7 @@ impl Tensor {
 
     pub fn construct(sequence: &[char], k: usize) -> Result<Self> {
         let mut tensor = Tensor::new_empty(k);
-        let kmers = generate_kmers(sequence, k);
+        let kmers = generate_kmers(sequence, k)?;
         tensor.populate(&kmers)?;
         Ok(tensor)
     }
@@ -121,26 +121,31 @@ pub struct KmerBasedParameters<'a> {
     pub modified_kmers: Vec<&'a [char]>,
 }
 
+
 // This function simply takes a string and returns the set of k-mers.
-pub fn generate_kmers(sequence: &[char], k: usize) -> Vec<&[char]> {
+pub fn generate_kmers(sequence: &[char], k: usize) -> Result<Vec<&[char]>> {
     let mut kmers = vec![];
 
     if k > sequence.len() {
-        return kmers;
+        bail!(
+            "K ({}) is less than string length {}",
+            k,
+            sequence.len()
+        );
     }
 
     for i in 0..=(sequence.len() - k) {
         kmers.push(&sequence[i..i + k]);
     }
-    kmers
+    Ok(kmers)
 }
 
 /* This function returns the euclidean distance between two strings' kmer vectors.
  * This is calculated as the l^2 norm of one vector subtracted from the other.
  */
 pub fn euclidean_distance(params: SequenceBasedParameters) -> Result<f64> {
-    let base_kmers = generate_kmers(&params.base_sequence, params.k);
-    let mod_kmers = generate_kmers(&params.modified_sequence, params.k);
+    let base_kmers = generate_kmers(&params.base_sequence, params.k)?;
+    let mod_kmers = generate_kmers(&params.modified_sequence, params.k)?;
 
     euclidean_distance_from_kmers(KmerBasedParameters {
         base_kmers: base_kmers, modified_kmers: mod_kmers,
@@ -212,10 +217,13 @@ fn my_hash_function<T: Hash> (item: &T, seed: u64) -> u64 {
 pub fn generate_minimizers(seq: &Vec<char>, w: usize, k: usize) -> Result<Vec<&[char]>> {
     let seed: u64 = 69;
 
+    if k > w {bail!("k ({}) > w ({})", k, w);}
+    if w > seq.len() {bail!("w ({}) > sequence length ({})", w, seq.len());}
+
     let mut minimizers: Vec<&[char]> = Vec::new();
     for idx in 0..seq.len() - w {
         let base_window = &seq[idx..idx + w];
-        let base_kmers = generate_kmers(base_window, k);
+        let base_kmers = generate_kmers(base_window, k)?;
         let base_minimizer = base_kmers
                 .iter()
                 .min_by_key(|item| my_hash_function(item, seed))
@@ -473,13 +481,15 @@ mod standalone_function_tests {
     fn test_generate_kmers_k1() {
         let seq: Vec<char> = "ACGT"
             .chars().collect();
-        let kmers = generate_kmers(&seq, 1);
+        let kmers = generate_kmers(&seq, 1)
+            .expect("Failed at k-mer generation");
         assert_eq!(kmers.len(), 4);
         for (i, c) in "ACGT".chars().enumerate() {
             assert_eq!(kmers[i], [c]);
         }
 
-        let kmers = generate_kmers(&['A', 'C', 'G', 'T'], 2);
+        let kmers = generate_kmers(&['A', 'C', 'G', 'T'], 2)
+            .expect("Failed at k-mer generation");
         assert_eq!(kmers.len(), 3);
         assert_eq!(kmers[0], ['A', 'C']);
         assert_eq!(kmers[1], ['C', 'G']);
