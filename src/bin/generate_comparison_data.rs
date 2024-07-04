@@ -40,8 +40,8 @@ struct DatabaseRecord {
 }
 
 impl DatabaseRecord {
-    fn generate_kmer_parameters(&self, k: &usize, w: &usize) -> tensor::Parameters {
-        tensor::Parameters{
+    fn generate_kmer_parameters(&self, k: &usize, w: &usize) -> tensor::SequenceBasedParameters {
+        tensor::SequenceBasedParameters{
             k:k.clone(),
             w:w.clone(),
             base_sequence: self.base_sequence.chars().collect(),
@@ -107,9 +107,9 @@ fn run(args: Args) -> Result<(), Box<dyn Error>> {
             let params = record.generate_kmer_parameters(k, &args.w);
             assert_eq!(&args.estimation_method, "minimizer_l2_norm");
             let estimated_distance: f64 = match args.estimation_method.as_str() {
-                "l2_norm" => tensor::l2norm(params)?,
+                "l2_norm" => tensor::euclidean_distance(params)?,
                 "cosine_similarity" => tensor::cosine_similarity(params)?,
-                "minimizer_l2_norm" => tensor::minimizer_l2_norm(params)?,
+                "minimizer_l2_norm" => tensor::minimizer_euclidean_distance(params)?,
                 "strobemer" => tensor::strobemer(params)?,
                 _ => {
                     assert_eq!(&args.estimation_method, "minimizer_l2_norm");

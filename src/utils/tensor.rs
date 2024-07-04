@@ -1,20 +1,11 @@
 use anyhow::{anyhow, bail, Result};
 use seahash::SeaHasher;
 use std::hash::{Hash, Hasher};
-use std::cmp::{min, max};
 
 #[derive(Debug)]
 pub struct Tensor {
     pub data: Vec<usize>,
     pub shape: Vec<usize>,
-}
-
-#[derive(Debug)]
-pub struct Parameters {
-    pub k: usize,
-    pub w: usize,
-    pub base_sequence: Vec<char>,
-    pub modified_sequence: Vec<char>,
 }
 
 #[allow(dead_code)]
@@ -114,6 +105,23 @@ impl Tensor {
     }
 }
 
+#[derive(Debug)]
+pub struct SequenceBasedParameters {
+    pub k: usize,
+    pub w: usize,
+    pub base_sequence: Vec<char>,
+    pub modified_sequence: Vec<char>,
+}
+
+#[derive(Debug)]
+pub struct KmerBasedParameters<'a> {
+    pub k: usize,
+    pub w: usize,
+    pub base_kmers: Vec<&'a [char]>,
+    pub modified_kmers: Vec<&'a [char]>,
+}
+
+// This function simply takes a string and returns the set of k-mers.
 pub fn generate_kmers(sequence: &[char], k: usize) -> Vec<&[char]> {
     let mut kmers = vec![];
 
@@ -127,29 +135,46 @@ pub fn generate_kmers(sequence: &[char], k: usize) -> Vec<&[char]> {
     kmers
 }
 
-/* This similarity estimation method returns the l2norm between two strings'
- * kmer vectors. Recall, a string's kmer vector is a vector where every
- * dimension represents the number of times a certain kmer appears in that string.
- * 
- * Thus, a low l2 norm predicts that two strings are similar, and vice versa.
+/* This function returns the euclidean distance between two strings' kmer vectors.
+ * This is calculated as the l^2 norm of one vector subtracted from the other.
  */
-pub fn l2norm(params: Parameters) -> Result<f64> {
-    let base_sequence_kmer_vector =
-        Tensor::construct(&params.base_sequence, params.k)?.to_vec();
-    let modified_sequence_kmer_vector =
-        Tensor::construct(&params.modified_sequence, params.k)?.to_vec();
+pub fn euclidean_distance(params: SequenceBasedParameters) -> Result<f64> {
+    let base_kmers = generate_kmers(&params.base_sequence, params.k);
+    let mod_kmers = generate_kmers(&params.modified_sequence, params.k);
 
+    euclidean_distance_from_kmers(KmerBasedParameters {
+        base_kmers: base_kmers, modified_kmers: mod_kmers,
+        k: params.k, w: params.w
+    })
+}
+
+/* This function does the same thing, but takes k-mer sets instead (this is important
+ * for minimizer methods)
+ */
+pub fn euclidean_distance_from_kmers(params: KmerBasedParameters) -> Result<f64> {
+    let mut base_tensor = Tensor::new_empty(params.k);
+    let mut mod_tensor = Tensor::new_empty(params.k);
+    base_tensor.populate(&params.base_kmers)?;
+    mod_tensor.populate(&params.modified_kmers)?;
+
+    let base_kmer_vec = base_tensor.to_vec();
+    let mod_kmer_vec = mod_tensor.to_vec();
+
+    
     let mut distance = 0;
-    for (x1, x2) in base_sequence_kmer_vector
+    for (x1, x2) in base_kmer_vec
         .iter()
-        .zip(modified_sequence_kmer_vector.iter())
+        .zip(mod_kmer_vec.iter())
     {
         distance += (x1.max(x2) - x1.min(x2)).pow(2);
     }
     Ok((distance as f64).sqrt())
 }
 
-pub fn cosine_similarity(params: Parameters) -> Result<f64> {
+/* This function calculates the cosine similarity between two strings' kmeer vectors.
+ * cosine similarity = (v1 * v2) / (||v1|| * ||v2||) 
+ */
+pub fn cosine_similarity(params: SequenceBasedParameters) -> Result<f64> {
     let base_sequence_kmer_vector =
         Tensor::construct(&params.base_sequence, params.k)?
             .to_vec()
@@ -184,131 +209,106 @@ fn my_hash_function<T: Hash> (item: &T, seed: u64) -> u64 {
     hasher.finish()
 }
 
-pub fn minimizer_l2_norm(params: Parameters) -> Result<f64> {
-    let mut base_minimizers: Vec<&[char]> = Vec::new();
-    let mut mod_minimizers: Vec<&[char]> = Vec::new();
+pub fn generate_minimizers(seq: &Vec<char>, w: usize, k: usize) -> Result<Vec<&[char]>> {
+    let seed: u64 = 69;
 
-    let smallest_sequence_length = std::cmp::min(
-        params.base_sequence.len(),
-        params.modified_sequence.len(),
-    );
-
-    for idx in 0..smallest_sequence_length-params.w {
-        let base_window = &params.base_sequence[idx..idx + params.w];
-        let mod_window = &params.modified_sequence[idx..idx + params.w];
-
-        let base_kmers = generate_kmers(base_window, params.k);
-        let mod_kmers = generate_kmers(mod_window, params.k);
-
-        let seed: u64 = 69;
+    let mut minimizers: Vec<&[char]> = Vec::new();
+    for idx in 0..seq.len() - w {
+        let base_window = &seq[idx..idx + w];
+        let base_kmers = generate_kmers(base_window, k);
         let base_minimizer = base_kmers
                 .iter()
                 .min_by_key(|item| my_hash_function(item, seed))
-                .ok_or_else(||
-                    anyhow!("Window={:?}; k={:?}; idx={:?}; smallest sequence length={:?}", base_window, &params.k, idx, smallest_sequence_length)
-                );
-        let mod_minimizer = mod_kmers
-                .iter()
-                .min_by_key(|item| my_hash_function(item, seed))
-                .ok_or_else(||
-                    anyhow!("Mod window: {:?}; mod {:?}-mers: {:?}", mod_window, &params.k, mod_kmers)
-                );
-
-        base_minimizers.push(base_minimizer?);
-        mod_minimizers.push(mod_minimizer?);
+                .unwrap();
+        minimizers.push(base_minimizer);
     }
-
-    let mut base_tensor = Tensor::new_empty(params.k);
-    base_tensor.populate(&base_minimizers)?;
-    let mut mod_tensor = Tensor::new_empty(params.k);
-    mod_tensor.populate(&mod_minimizers)?;
-
-    let mut distance = 0;
-    for (x1, x2) in base_tensor
-        .data_ref()
-        .iter()
-        .zip(mod_tensor.data_ref().iter())
-    {
-        distance += (max(x1, x2) - min(x1, x2)).pow(2);
-    }
-
-    Ok((distance as f64).sqrt())
+    Ok(minimizers)
 }
 
-pub fn strobemer(_params: Parameters) -> Result<f64> {
+pub fn minimizer_euclidean_distance(params: SequenceBasedParameters) -> Result<f64> {
+    let base_minimizers = generate_minimizers(&params.base_sequence, params.w, params.k)?;
+    let mod_minimizers = generate_minimizers(&params.modified_sequence, params.w, params.k)?;
+
+    euclidean_distance_from_kmers(KmerBasedParameters {
+        base_kmers: base_minimizers, modified_kmers: mod_minimizers,
+        k: params.k, w: params.w
+    })
+}
+
+pub fn strobemer(_params: SequenceBasedParameters) -> Result<f64> {
     unimplemented!();
 }
 
 #[cfg(test)]
 mod similarity_method_tests {
-    use crate::utils::tensor::{cosine_similarity, minimizer_l2_norm, strobemer};
+    use crate::utils::tensor::{cosine_similarity, minimizer_euclidean_distance, strobemer};
 
-    use super::{Parameters, l2norm};
+    use super::{SequenceBasedParameters, euclidean_distance};
     use pretty_assertions::assert_eq;
 
     // KMER VECTOR L2 NORM TESTS
-    fn test_l2norm(p: Parameters, expected: f64)  {
-        let res = l2norm(p);
+    fn test_euclidean_distance(p: SequenceBasedParameters, expected: f64)  {
+        let res = euclidean_distance(p);
         assert!(res.is_ok());
         assert_eq!(res.unwrap(), expected);
     }
     #[test]
-    fn test_l2norm_equal_k1() {
-        // k=1, same number of each character, should result in l2norm = 0.0
-        let p = Parameters {
+    fn test_euclidean_distance_equal_k1() {
+        // k=1, same number of each character, should result in euclidean_distance = 0.0
+        let p = SequenceBasedParameters {
             k: 1,
-            w: 1, // irrelevant for l2norm
+            w: 1, // irrelevant for euclidean_distance
             base_sequence: "ACGT".chars().collect(),
             modified_sequence: "GCAT".chars().collect(),
         };
-        test_l2norm(p, 0.0);
+        test_euclidean_distance(p, 0.0);
     }
     #[test]
-    fn test_l2norm_equal_k2() {
-        // k=2, same number of 2-mers, should result in l2norm = 0.0
-        let p = Parameters {
+    fn test_euclidean_distance_equal_k2() {
+        // k=2, same number of 2-mers, should result in euclidean_distance = 0.0
+        let p = SequenceBasedParameters {
             k: 2,
-            w: 1, // irrelevant for l2norm
+            w: 1, // irrelevant for euclidean_distance
             base_sequence: "ACGTA".chars().collect(),
             modified_sequence: "CGTAC".chars().collect(),
         };
-        test_l2norm(p, 0.0);
+        test_euclidean_distance(p, 0.0);
     }
     #[test]
-    fn test_l2norm_unequal_k1() {
-        // k=1, unequal character set, should result in l2norm = sqrt(2)
-        let p = Parameters {
+    fn test_euclidean_distance_unequal_k1() {
+        // k=1, unequal character set
+        let p = SequenceBasedParameters {
             k: 1,
-            w: 1, // irrelevant for l2norm
+            w: 1, // irrelevant for euclidean_distance
             base_sequence: "GTTTTT".chars().collect(),
             modified_sequence: "ATTTTT".chars().collect(),
         };
-        test_l2norm(p, 1.4142135623730951);
+        test_euclidean_distance(p, 1.4142135623730951); // square root 2
     }
     #[test]
-    fn test_l2norm_unequal_k2() {
-        // k=2, unequal 2-mer set, should result in l2norm = sqrt(2)
-        let p = Parameters {
+    fn test_euclidean_distance_unequal_k2() {
+        // k=2, unequal 2-mer set, should result in euclidean_distance = sqrt(2)
+        let p = SequenceBasedParameters {
             k: 1,
-            w: 1, // irrelevant for l2norm
+            w: 1, // irrelevant for euclidean_distance
             base_sequence: "GTTTTT".chars().collect(),
             modified_sequence: "ATTTTT".chars().collect(),
         };
-        test_l2norm(p, 1.4142135623730951);
+        test_euclidean_distance(p, 1.4142135623730951);
     }
 
     // COSINE SIMILARITY TESTS
-    fn test_cosine_similarity(p: Parameters, expected: f64) {
+    fn test_cosine_similarity(p: SequenceBasedParameters, expected: f64) {
         let res = cosine_similarity(p);
         assert!(res.is_ok());
         assert_eq!(res.unwrap(), expected);
     }
     #[test]
     fn test_cosine_similarity_equal_k1() {
-        // k=2, unequal 2-mer set, should result in l2norm = sqrt(2)
-        let p = Parameters {
+        // k=2, unequal 2-mer set, should result in euclidean_distance = sqrt(2)
+        let p = SequenceBasedParameters {
             k: 1,
-            w: 1, // irrelevant for l2norm
+            w: 1, // irrelevant for euclidean_distance
             base_sequence: "ACTG".chars().collect(),
             modified_sequence: "CTAG".chars().collect(),
         };
@@ -316,10 +316,10 @@ mod similarity_method_tests {
     }
     #[test]
     fn test_cosine_similarity_equal_k2() {
-        // k=2, unequal 2-mer set, should result in l2norm = sqrt(2)
-        let p = Parameters {
+        // k=2, unequal 2-mer set, should result in euclidean_distance = sqrt(2)
+        let p = SequenceBasedParameters {
             k: 2,
-            w: 1, // irrelevant for l2norm
+            w: 1, // irrelevant for euclidean_distance
             base_sequence: "ACTGA".chars().collect(),
             modified_sequence: "CTGAC".chars().collect(),
         };
@@ -327,10 +327,10 @@ mod similarity_method_tests {
     }
     #[test]
     fn test_cosine_similarity_unequal_k2() {
-        // k=2, unequal 2-mer set, should result in l2norm = sqrt(2)
-        let p = Parameters {
+        // k=2, unequal 2-mer set, should result in euclidean_distance = sqrt(2)
+        let p = SequenceBasedParameters {
             k: 2,
-            w: 1, // irrelevant for l2norm
+            w: 1, // irrelevant for euclidean_distance
             base_sequence: "ACTGG".chars().collect(),
             modified_sequence: "CTGAC".chars().collect(),
         };
@@ -338,85 +338,85 @@ mod similarity_method_tests {
     }
     #[test]
     fn test_cosine_similarity_unequal_k1() {
-        // k=2, unequal 2-mer set, should result in l2norm = sqrt(2)
-        let p = Parameters {
+        // k=2, unequal 2-mer set, should result in euclidean_distance = sqrt(2)
+        let p = SequenceBasedParameters {
             k: 1,
-            w: 1, // irrelevant for l2norm
-            base_sequence: "AG".chars().collect(),
-            modified_sequence: "AT".chars().collect(),
+            w: 1, // irrelevant for euclidean_distance
+            base_sequence: "GTT".chars().collect(),
+            modified_sequence: "ATT".chars().collect(),
         };
-        test_cosine_similarity(p, 0.4999999999999999);
+        test_cosine_similarity(p, 0.7999999999999998);
     }
 
     // MINIMIZER L2 NORM TESTS
-    fn test_minimizer_l2_norm(p: Parameters, expected: f64) {
-        let res = minimizer_l2_norm(p);
+    fn test_minimizer_euclidean_distance(p: SequenceBasedParameters, expected: f64) {
+        let res = minimizer_euclidean_distance(p);
         assert!(res.is_ok());
         assert_eq!(res.unwrap(), expected);
     }
     #[test]
-    fn test_minimizer_l2_norm_equal_k1_w4() {
+    fn test_minimizer_euclidean_distance_equal_w1() {
         // Some less trivial example?
-        let p = Parameters {
+        let p = SequenceBasedParameters {
             k: 1,
-            w: 4,
-            base_sequence: "ACTG".chars().collect(),
-            modified_sequence: "ACTG".chars().collect(),
+            w: 1,
+            base_sequence: "AAA".chars().collect(),
+            modified_sequence: "AAA".chars().collect(),
         };
-        test_minimizer_l2_norm(p, 0.0);
+        test_minimizer_euclidean_distance(p, 0.0);
     }
     #[test]
-    fn test_minimizer_l2_norm_equal_k2() {
+    fn test_minimizer_euclidean_distance_equal_w3() {
         // Some less trivial example?
-        let p = Parameters {
+        let p = SequenceBasedParameters {
             k: 2,
-            w: 4,
-            base_sequence: "ACTG".chars().collect(),
-            modified_sequence: "ACTG".chars().collect(),
+            w: 3,
+            base_sequence: "AAAAA".chars().collect(),
+            modified_sequence: "AAAAA".chars().collect(),
         };
-        test_minimizer_l2_norm(p, 0.0);
+        test_minimizer_euclidean_distance(p, 0.0);
     }
     #[test]
-    fn test_minimizer_l2_norm_unequal_k1_w4() {
+    fn test_minimizer_euclidean_distance_unequal_k3_w_equals_l() {
         // Some less trivial example?
-        let p = Parameters {
-            k: 1,
-            w: 4,
-            base_sequence: "ACTA".chars().collect(),
-            modified_sequence: "ACTG".chars().collect(),
+        let p = SequenceBasedParameters {
+            k: 2,
+            w: 2,
+            base_sequence: "AAAAA".chars().collect(),
+            modified_sequence: "AAACC".chars().collect(),
         };
-        test_minimizer_l2_norm(p, 0.0);
+        test_minimizer_euclidean_distance(p, 0.0);
     }
     #[test]
-    fn test_minimizer_l2_norm_unequal_k2_w4() {
-        let p = Parameters {
+    fn test_minimizer_euclidean_distance_unequal_k2_w4() {
+        let p = SequenceBasedParameters {
             k: 2,
             w: 4,
             base_sequence: "ACTC".chars().collect(),
             modified_sequence: "ACTG".chars().collect(),
         };
-        test_minimizer_l2_norm(p, 0.0);
+        test_minimizer_euclidean_distance(p, 0.0);
     }
     #[test]
-    fn test_minimizer_l2_norm_unequal_k1_w4_long() {
+    fn test_minimizer_euclidean_distance_unequal_k1_w4_long() {
         // I should study this one a bit more...
-        let p = Parameters {
+        let p = SequenceBasedParameters {
             k: 2,
             w: 4,
             base_sequence: "AAAATTTT".chars().collect(),
             modified_sequence: "AAAAGGGG".chars().collect(),
         };
-        test_minimizer_l2_norm(p, 0.0);
+        test_minimizer_euclidean_distance(p, 0.0);
     }
 
-    fn test_strobemer(p: Parameters, expected: f64) {
+    fn test_strobemer(p: SequenceBasedParameters, expected: f64) {
         let res = strobemer(p);
         assert!(res.is_ok());
         assert_eq!(res.unwrap(), expected);
     }
     #[test]
     fn test_strobemer_equal_k1() {
-        let p = Parameters {
+        let p = SequenceBasedParameters {
             k: 1,
             w: 1,
             base_sequence: vec!['A', 'C', 'G', 'T'],
