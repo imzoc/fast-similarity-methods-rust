@@ -140,7 +140,7 @@ pub fn generate_kmers(sequence: &[char], k: usize) -> Result<Vec<&[char]>> {
     Ok(kmers)
 }
 
-/* This function returns the euclidean distance between two strings' kmer vectors.
+/* This function calculates the euclidean distance between kmer-vector representations of strings.
  * This is calculated as the l^2 norm of one vector subtracted from the other.
  */
 pub fn euclidean_distance(params: SequenceBasedParameters) -> Result<f64> {
@@ -207,13 +207,17 @@ pub fn cosine_similarity(params: SequenceBasedParameters) -> Result<f64> {
     Ok(dot_product / (base_sequence_magnitude.sqrt() * modified_sequence_magnitude.sqrt()))
 }
 
-
+/* This is a simple hash function that maps items (kmers) to u64 integers.
+ * It uses a seed, so this is technically a series of hash functions.
+ */
 fn my_hash_function<T: Hash> (item: &T, seed: u64) -> u64 {
     let mut hasher = SeaHasher::with_seeds(seed, seed, seed, seed);
     item.hash(&mut hasher);
     hasher.finish()
 }
-
+/* This function generates a set of minimizers from a string. It uses my_hash_function
+ * with a set seed (69). It only uses ONE hash function.
+ */
 pub fn generate_minimizers(seq: &Vec<char>, w: usize, k: usize) -> Result<Vec<&[char]>> {
     let seed: u64 = 69;
 
@@ -233,6 +237,8 @@ pub fn generate_minimizers(seq: &Vec<char>, w: usize, k: usize) -> Result<Vec<&[
     Ok(minimizers)
 }
 
+/* This function calculates the euclidean distance between kmer-vector representations
+* of minimizer representations of strings. */
 pub fn minimizer_euclidean_distance(params: SequenceBasedParameters) -> Result<f64> {
     let base_minimizers = generate_minimizers(&params.base_sequence, params.w, params.k)?;
     let mod_minimizers = generate_minimizers(&params.modified_sequence, params.w, params.k)?;
@@ -243,7 +249,13 @@ pub fn minimizer_euclidean_distance(params: SequenceBasedParameters) -> Result<f
     })
 }
 
+/* I haven't implemented this yet and I also don't know how it works :) */
 pub fn strobemer(_params: SequenceBasedParameters) -> Result<f64> {
+    unimplemented!();
+}
+
+/* This is the final goal of my project! */
+pub fn tensor_slide_sketch(_params: SequenceBasedParameters) -> Result<f64> {
     unimplemented!();
 }
 
