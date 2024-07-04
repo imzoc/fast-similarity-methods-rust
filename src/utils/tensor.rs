@@ -254,6 +254,16 @@ pub fn strobemer(_params: SequenceBasedParameters) -> Result<f64> {
     unimplemented!();
 }
 
+/*  */
+pub fn ordered_minimizer_euclidean_distance(_params: SequenceBasedParameters) -> Result<f64> {
+    unimplemented!();
+}
+
+/*  */
+pub fn weighted_minimizer_euclidean_distance(_params: SequenceBasedParameters) -> Result<f64> {
+    unimplemented!();
+}
+
 /* This is the final goal of my project! */
 pub fn tensor_slide_sketch(_params: SequenceBasedParameters) -> Result<f64> {
     unimplemented!();
