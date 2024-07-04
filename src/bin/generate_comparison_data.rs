@@ -1,11 +1,8 @@
-use anyhow::Result;
+use anyhow::{bail, Result};
 use clap::Parser;
 use csv::{ReaderBuilder, WriterBuilder};
 use serde::Deserialize;
 use std::collections::HashMap;
-use std::error::Error;
-
-use pretty_assertions::assert_eq;
 
 #[derive(Debug, Parser)]
 #[command(about, author, version)]
@@ -91,7 +88,7 @@ fn main() {
 
 // --------------------------------------------------
 // See this repo's README file for pseudocode
-fn run(args: Args) -> Result<(), Box<dyn Error>> {
+fn run(args: Args) -> Result<()> {
     // Rolling magnitude and variability data.
     let mut edit_distance_sums = KAndEditDistanceHashMap::new();
     let mut edit_distance_squared_sums = KAndEditDistanceHashMap::new();
@@ -105,15 +102,13 @@ fn run(args: Args) -> Result<(), Box<dyn Error>> {
 
         for k in &args.k_range {
             let params = record.generate_kmer_parameters(k, &args.w);
-            assert_eq!(&args.estimation_method, "minimizer_l2_norm");
             let estimated_distance: f64 = match args.estimation_method.as_str() {
                 "l2_norm" => tensor::euclidean_distance(params)?,
                 "cosine_similarity" => tensor::cosine_similarity(params)?,
                 "minimizer_l2_norm" => tensor::minimizer_euclidean_distance(params)?,
                 "strobemer" => tensor::strobemer(params)?,
                 _ => {
-                    assert_eq!(&args.estimation_method, "minimizer_l2_norm");
-                    unreachable!()
+                    bail!("Unknown estimation method: {}", args.estimation_method.as_str());
                 }
             };
 
