@@ -7,6 +7,5 @@ This repository contains two programs:
 
 ## Progress and Development
 This project is still very much in development. 
-TODO: Build a ergonomic and complete command-line application with `clap`.
-TODO: Evaluate runtime performance.
-TODO: Compare estimation metrics with true edit distances.
+TODO: Makefile for fast and intuitive usage. 
+TODO: Figure out what to do next...
