@@ -6,23 +6,26 @@ GEN_COMP = cargo run --bin generate_comparison_data --
 MINIMIZER = minimizer_l2_norm
 
 
-smol_l2norm:
-	$(GEN_COMP) -s $(SMALL_DB) -e l2_norm -o $(SMALL_OUT)l2norm.csv
+small_kmer_eucidean_distance:
+	$(GEN_COMP) -s $(SMALL_DB) -e kmer_euclidean_distance -o $(SMALL_OUT)KED_k6_step3.csv --k 6 --step 3
 
-big_l2norm:
-	$(GEN_COMP) -s $(BIG_DB) -e l2_norm -o $(BIG_OUT)l2norm.csv
+big_kmer_eucidean_distance:
+	$(GEN_COMP) -s $(BIG_DB) -e kmer_euclidean_distance -o $(BIG_OUT)KED_k6_step3.csv --k 6 --step 3
 
-smol_minimizer:
-	$(GEN_COMP) -s $(SMALL_DB) -e $(MINIMIZER) -o $(SMALL_OUT)minimizer.csv
+small_kmer_cosine_similarity:
+	$(GEN_COMP) -s $(SMALL_DB) -e kmer_cosine_similarity -o $(SMALL_OUT)KCS_k6_step3.csv --k 6 --step 3
 
-big_minimizer:
-	$(GEN_COMP) -s $(BIG_DB) -e $(MINIMIZER) -o $(BIG_OUT)minimizer.csv
+big_kmer_cosine_similarity:
+	$(GEN_COMP) -s $(BIG_DB) -e kmer_cosine_similarity -o $(BIG_OUT)KCS_k6_step3.csv --k 6 --step 3
 
-smol_strobemer:
-	$(GEN_COMP) -s $(SMALL_DB) -e strobemer -o $(SMALL_OUT)strobemer.csv
+small_minimizer_euclidean_distance:
+	$(GEN_COMP) -s $(SMALL_DB) -e minimizer_euclidean_distance -o $(SMALL_OUT)MED_k5_window20_step10.csv -m 20 --step 10 --k 5
 
-smol_cosine:
-	$(GEN_COMP) -s $(SMALL_DB) -e cosine_similarity -o $(SMALL_OUT)cosine_similarity.csv
+big_minimizer_euclidean_distance:
+	$(GEN_COMP) -s $(BIG_DB) -e minimizer_euclidean_distance -o $(BIG_OUT)MED_k5_window20_step10.csv -m 20 --step 10 --k 5
 
-big_cosine:
-	$(GEN_COMP) -s $(BIG_DB) -e cosine_similarity -o $(BIG_OUT)cosine_similarity.csv
+small_strobemer_euclidean_distance:
+	$(GEN_COMP) -s $(SMALL_DB) -e strobemer_euclidean_distance -o $(SMALL_OUT)SED_order3_strobe4_gap2_window10.csv --strobemer-order 3 --strobe-length 4 --strobe-window-gap 2 --strobe-window-length 10 
+
+big_strobemer_euclidean_distance:
+	$(GEN_COMP) -s $(BIG_DB) -e strobemer_euclidean_distance -o $(BIG_OUT)SED_order3_strobe4_gap2_window10.csv --strobemer-order 3 --strobe-length 4 --strobe-window-gap 2 --strobe-window-length 10 

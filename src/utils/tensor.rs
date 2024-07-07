@@ -1,6 +1,7 @@
 use anyhow::{anyhow, bail, Result};
 use seahash::SeaHasher;
 use std::hash::{Hash, Hasher};
+use std::collections::HashMap;
 
 #[derive(Debug)]
 pub struct Tensor {
@@ -18,11 +19,15 @@ impl Tensor {
         Tensor { data, shape }
     }
 
-    pub fn construct(sequence: &[char], k: usize) -> Result<Self> {
+    pub fn construct_with_step(sequence: &[char], k: usize, step: usize) -> Result<Self> {
         let mut tensor = Tensor::new_empty(k);
-        let kmers = generate_kmers(sequence, k)?;
+        let kmers = generate_kmers_with_step(sequence, k, step)?;
         tensor.populate(&kmers)?;
         Ok(tensor)
+    }
+
+    pub fn construct(sequence: &[char], k: usize) -> Result<Self> {
+        Tensor::construct_with_step(sequence, k, 1)
     }
 
     pub fn shape(&self) -> &Vec<usize> {
@@ -67,14 +72,14 @@ impl Tensor {
         Some(index)
     }
 
-    pub fn populate(&mut self, kmers: &Vec<&[char]>) -> Result<()> {
+    pub fn populate(&mut self,  kmers: &Vec<&[char]>) -> Result<()> {
         let dimensions = self.shape.len();
         //const ALPHABET: [char; 4] = ['A', 'C', 'T', 'G']; // unused
 
         for kmer in kmers {
             if kmer.len() != dimensions {
                 bail!(
-                    "K-mer length {} does not match tensor dimensions {}",
+                    "K ({}) does not match tensor dimensions ({})",
                     kmer.len(),
                     dimensions
                 );
@@ -105,25 +110,16 @@ impl Tensor {
     }
 }
 
-#[derive(Debug)]
-pub struct SequenceBasedParameters {
-    pub k: usize,
-    pub w: usize,
-    pub base_sequence: Vec<char>,
-    pub modified_sequence: Vec<char>,
-}
-
-#[derive(Debug)]
-pub struct KmerBasedParameters<'a> {
-    pub k: usize,
-    pub w: usize,
-    pub base_kmers: Vec<&'a [char]>,
-    pub modified_kmers: Vec<&'a [char]>,
-}
-
-
 // This function simply takes a string and returns the set of k-mers.
 pub fn generate_kmers(sequence: &[char], k: usize) -> Result<Vec<&[char]>> {
+    generate_kmers_with_step(sequence, k, 1)
+}
+
+pub fn generate_kmers_with_step(
+    sequence: &[char],
+    k: usize,
+    step: usize
+) -> Result<Vec<&[char]>> {
     let mut kmers = vec![];
 
     if k > sequence.len() {
@@ -134,7 +130,7 @@ pub fn generate_kmers(sequence: &[char], k: usize) -> Result<Vec<&[char]>> {
         );
     }
 
-    for i in 0..=(sequence.len() - k) {
+    for i in (0..=(sequence.len() - k)).step_by(step) {
         kmers.push(&sequence[i..i + k]);
     }
     Ok(kmers)
@@ -143,29 +139,34 @@ pub fn generate_kmers(sequence: &[char], k: usize) -> Result<Vec<&[char]>> {
 /* This function calculates the euclidean distance between kmer-vector representations of strings.
  * This is calculated as the l^2 norm of one vector subtracted from the other.
  */
-pub fn euclidean_distance(params: SequenceBasedParameters) -> Result<f64> {
-    let base_kmers = generate_kmers(&params.base_sequence, params.k)?;
-    let mod_kmers = generate_kmers(&params.modified_sequence, params.k)?;
+pub fn kmer_euclidean_distance(
+    base_seq: &[char],
+    mod_sequence: &[char],
+    k: usize,
+    step: usize
+) -> Result<f64> {
+    let base_kmers = generate_kmers_with_step(base_seq, k, step)?;
+    let mod_kmers = generate_kmers_with_step(mod_sequence, k, step)?;
 
-    euclidean_distance_from_kmers(KmerBasedParameters {
-        base_kmers: base_kmers, modified_kmers: mod_kmers,
-        k: params.k, w: params.w
-    })
+    kmer_euclidean_distance_from_kmers(base_kmers, mod_kmers, k)
 }
 
-/* This function does the same thing, but takes k-mer sets instead (this is important
- * for minimizer methods)
- */
-pub fn euclidean_distance_from_kmers(params: KmerBasedParameters) -> Result<f64> {
-    let mut base_tensor = Tensor::new_empty(params.k);
-    let mut mod_tensor = Tensor::new_empty(params.k);
-    base_tensor.populate(&params.base_kmers)?;
-    mod_tensor.populate(&params.modified_kmers)?;
+pub fn kmer_euclidean_distance_from_kmers(
+    base_kmers: Vec<&[char]>,
+    mod_kmers: Vec<&[char]>,
+    k: usize
+) -> Result<f64> {
+    // At the moment, Tensor cannot handle unified kmers (it would require an extra dimension)
+    // I can modify Tensor. However, I think I can do this computation without a tensor.
+    // That is, I think I can construct the kmer occurrence vector without constructing the tensor first.
+    let mut base_tensor = Tensor::new_empty(k);
+    let mut mod_tensor = Tensor::new_empty(k);
+    base_tensor.populate(&base_kmers)?;
+    mod_tensor.populate(&mod_kmers)?;
 
     let base_kmer_vec = base_tensor.to_vec();
     let mod_kmer_vec = mod_tensor.to_vec();
 
-    
     let mut distance = 0;
     for (x1, x2) in base_kmer_vec
         .iter()
@@ -177,282 +178,391 @@ pub fn euclidean_distance_from_kmers(params: KmerBasedParameters) -> Result<f64>
 }
 
 /* This function calculates the cosine similarity between two strings' kmeer vectors.
- * cosine similarity = (v1 * v2) / (||v1|| * ||v2||) 
+ * cosine similarity = (v1 * v2) / (||v1|| * ||v2||)
  */
-pub fn cosine_similarity(params: SequenceBasedParameters) -> Result<f64> {
-    let base_sequence_kmer_vector =
-        Tensor::construct(&params.base_sequence, params.k)?
+pub fn kmer_cosine_similarity(
+    base_seq: &[char],
+    mod_seq: &[char],
+    k: usize,
+    step: usize
+) -> Result<f64> {
+    let base_seq_kmer_vector =
+        Tensor::construct_with_step(&base_seq, k, step)?
             .to_vec()
             .into_iter()
             .map(|v| v as f64);
-    let modified_sequence_kmer_vector =
-        Tensor::construct(&params.modified_sequence, params.k)?
+    let mod_seq_kmer_vector =
+        Tensor::construct_with_step(&mod_seq, k, step)?
             .to_vec()
             .into_iter()
             .map(|v| v as f64);
 
-    let mut base_sequence_magnitude = 0.0;
-    let mut modified_sequence_magnitude = 0.0;
+    let mut base_seq_magnitude = 0.0;
+    let mut mod_seq_magnitude = 0.0;
     let mut dot_product = 0.0;
     for (base_element, mod_element) in
-        base_sequence_kmer_vector.zip(modified_sequence_kmer_vector)
+        base_seq_kmer_vector.zip(mod_seq_kmer_vector)
     {
-        base_sequence_magnitude += base_element * base_element;
-        modified_sequence_magnitude += mod_element * mod_element;
+        base_seq_magnitude += base_element * base_element;
+        mod_seq_magnitude += mod_element * mod_element;
         dot_product += base_element * mod_element;
     }
-    if base_sequence_magnitude == 0.0 || modified_sequence_magnitude == 0.0 {
+    if base_seq_magnitude == 0.0 || mod_seq_magnitude == 0.0 {
         return Ok(0.0);
     }
-    Ok(dot_product / (base_sequence_magnitude.sqrt() * modified_sequence_magnitude.sqrt()))
+    Ok(dot_product / (base_seq_magnitude.sqrt() * mod_seq_magnitude.sqrt()))
+}
+
+/* This function calculates the euclidean distance between kmer-vector representations
+* of minimizer representations of strings. */
+pub fn minimizer_euclidean_distance(
+    base_seq: &[char],
+    mod_seq: &[char],
+    k: usize,
+    w: usize,
+    step: usize
+) -> Result<f64> {
+    let base_minimizers = generate_minimizers(base_seq, k, w, step)?;
+    let mod_minimizers = generate_minimizers(mod_seq, k, w, step)?;
+
+    kmer_euclidean_distance_from_kmers(base_minimizers, mod_minimizers, k)
+}
+
+/* This function generates a set of minimizers from a string. It uses my_hash_function
+ * with a set seed (69). It only uses ONE hash function.
+ */
+pub fn generate_minimizers(
+    seq: &[char],
+    k: usize,
+    w: usize,
+    step: usize
+) -> Result<Vec<&[char]>> {
+    if k > w {bail!("k ({}) > w ({})", k, w);}
+    if w > seq.len() {bail!("w ({}) > sequence length ({})", w, seq.len());}
+
+    let mut minimizers: Vec<&[char]> = Vec::new();
+    for idx in (0..seq.len() - w).step_by(step) {
+        let window = &seq[idx..idx + w];
+        let minimizer = generate_single_minimizer(window, k)?;
+        minimizers.push(minimizer);
+    }
+    Ok(minimizers)
+}
+
+pub fn generate_single_minimizer(window: &[char], k: usize) -> Result<&[char]> {
+    let seed: u64 = 69;
+    let kmers = generate_kmers(window, k)?;
+    let minimizer = kmers
+            .iter()
+            .min_by_key(|item| my_hash_function(item, seed))
+            .unwrap();
+    Ok(minimizer)
 }
 
 /* This is a simple hash function that maps items (kmers) to u64 integers.
- * It uses a seed, so this is technically a series of hash functions.
- */
+* It uses a seed, so this is technically a series of hash functions.
+*/
 fn my_hash_function<T: Hash> (item: &T, seed: u64) -> u64 {
     let mut hasher = SeaHasher::with_seeds(seed, seed, seed, seed);
     item.hash(&mut hasher);
     hasher.finish()
 }
+
+/* This struct manages ownership of string slices. Strobemers are constructed from strobes,
+ * each of which is its own borrowed string slice. These slices need to be concatenated
+ * into a bigger string slice, so this struct takes ownership so the concatenated string
+ * slice stays alive while it's being used for calculations.
+ */
+struct Strobemer {
+    chars: Vec<char>
+}
+
+impl Strobemer {
+    pub fn new(strobes: Vec<&[char]>) -> Self {
+        let strobemer_length: usize = strobes.iter()
+            .map(|strobe| strobe.len()).sum();
+        let mut strobemer = Vec::with_capacity(strobemer_length);
+        for strobe in strobes {
+            strobemer.extend_from_slice(strobe);
+        }
+        Strobemer {chars: strobemer}
+    }
+
+    pub fn data_ref(&self) -> &[char] {
+        &self.chars
+    }
+}
+
+/*  This function generates a string's set of strobemers. Strobemers are quirky,
+so here's an intuitive breakdown of what strobemers are and how they're generated:
+
+* Stromebers are the concatenation of strobes. There are *order* strobes in each
+strobemer.
+* Each strobemer is drawn from a span of length strobemer_span_length =
+            strobe_length + (strobe_window_gap + strobe_window_length) * order,
+representing the first strobe and all of the remaining strobe windows.
+* In any sequence, there are
+            (sequence.len() - strobemer_span_length) / step
+strobemers. 
+* The n'th strobemer is drawn from
+            sequence[n * step..n * step + order * l].
+* In each strobemer there are *order* strobes.
+* In each strobemer, the first strobe's index is alwoys at the very start of the
+strobemer's span. It is NOT determined by the argmin of a hash function.
+* The n'th strobe (not including the first strobe, of course) is the l-mer minimizer
+of a window within the strobemer's span. Specifically, that window is:
+        window_end = strobe_length + (strobe_window_gap + strobe_window_length) * n
+        window_end = window_start - strobe_window_length
+        strobemer_span[window_start..window_end].
+*/
+pub fn strobemer_euclidean_distance(
+    base_seq: &[char],
+    mod_seq: &[char],
+    order: usize,                   // the number of concatenated strobes in each strobemer.
+    strobe_length: usize,           // the length of each strobe.
+    strobe_window_gap: usize,       // the gap between strobe selection windows.
+    strobe_window_length: usize,    // the size of each strobe's selection window.
+    step: usize                     // the space between strobemer selection windows.
+)-> Result<f64> {
+    if strobe_window_length < strobe_length {
+        bail!("Strobe window length ({}) is smaller than the length of the strobe ({})",
+            strobe_window_length, strobe_length);
+    }
+
+    let base_strobemers = generate_strobemers(
+        base_seq,
+        order,
+        strobe_length,
+        strobe_window_gap,
+        strobe_window_length,
+        step
+    )?;
+    let base_strobemers_chars: Vec<&[char]> = base_strobemers
+        .iter().map(|strobemer| strobemer.data_ref()).collect();
+    let mod_strobemers = generate_strobemers(
+        mod_seq,
+        order,
+        strobe_length,
+        strobe_window_gap,
+        strobe_window_length,
+        step
+    )?;
+    let mod_strobemers_chars: Vec<&[char]> = mod_strobemers
+        .iter().map(|strobemer| strobemer.data_ref()).collect();
+
+    kmer_euclidean_distance_from_kmers(
+        base_strobemers_chars,
+        mod_strobemers_chars,
+        order * strobe_length)
+}
+
+/* HELPER FUNCTION FOR strobemer_euclidean_distance()
+ * This function generates a string's set of strobemers.
+ */
+fn generate_strobemers(
+    seq: &[char],
+    order: usize,
+    strobe_length: usize,
+    strobe_window_gap: usize,
+    strobe_window_length: usize,
+    step: usize
+) -> Result<Vec<Strobemer>> {
+    let mut strobemers: Vec<Strobemer> = Vec::new(); // custom struct to manage slice ownership.
+    let strobemer_span = strobe_length +
+        order * (strobe_window_length + strobe_window_gap);
+    let last_strobemer_start_index = seq.len() - strobemer_span; // try + 1?
+
+    for idx in (0..last_strobemer_start_index).step_by(step) {
+        let strobemer_window = &seq[idx..idx + strobemer_span];
+        let strobemer = generate_single_strobemer(
+            strobemer_window,
+            order,
+            strobe_length,
+            strobe_window_gap,
+            strobe_window_length
+        )?;
+        strobemers.push(strobemer);
+    }
+    Ok(strobemers)
+}
+
+/* This function generates the first strobemer from a designated window. This means the first
+ * strobe is always seq[0..=l]. The subsequent strobes are generated by generate_single_minimizer()
+ * from the window designated by the strobemer paper.
+ *
+ * To generate a string's entire set of strobemers, use this function as a HELPER FUNCTION.
+ * Pass it a reference to the substring you want to generate a strobemer from, with the first
+ * strobemer being seq[0..=l].
+ */
+fn generate_single_strobemer(
+    strobemer_window: &[char],
+    order: usize,
+    strobe_length: usize,
+    strobe_window_gap: usize,
+    strobe_window_length: usize
+) -> Result<Strobemer> {
+    let mut strobes: Vec<&[char]> = Vec::new();
+    let first_strobe = &strobemer_window[0..strobe_length];
+    strobes.push(first_strobe);
+    for n in 1..order {
+        let window_end = strobe_length + (strobe_window_gap + strobe_window_length) * n;
+        let window_start = window_end - strobe_window_length;
+        let strobe_window = &strobemer_window[window_start..window_end];
+        let strobe = generate_single_minimizer(strobe_window, strobe_length)?;
+        strobes.push(strobe);
+    }
+    Ok(Strobemer::new(strobes))
+}
+
+/*  */
+pub fn unified_minimizer_euclidean_distance(
+    base_seq: &[char],
+    mod_seq: &[char],
+    k: usize,
+    w: usize
+) -> Result<f64> {
+    let base_minimizers = generate_unified_minimizers(&base_seq, w, k)?;
+    let mod_minimizers = generate_unified_minimizers(&mod_seq, w, k)?;
+    kmer_euclidean_distance_from_unified_kmers(base_minimizers, mod_minimizers, k, w)
+}
+
 /* This function generates a set of minimizers from a string. It uses my_hash_function
  * with a set seed (69). It only uses ONE hash function.
  */
-pub fn generate_minimizers(seq: &Vec<char>, w: usize, k: usize) -> Result<Vec<&[char]>> {
+pub fn generate_unified_minimizers(
+    seq: &[char],
+    w: usize,
+    k: usize
+) -> Result<HashMap<&[char], usize>> {
     let seed: u64 = 69;
+    /* This is a simple hash function that maps items (kmers) to u64 integers.
+    * It uses a seed, so this is technically a series of hash functions.
+    */
+    fn my_unified_hash_function<T: Hash> (item: &T, occurrence_number: usize, seed: u64) -> u64 {
+        let mut hasher = SeaHasher::with_seeds(seed, seed, seed, seed);
+        (item, occurrence_number).hash(&mut hasher);
+        hasher.finish()
+    }
 
     if k > w {bail!("k ({}) > w ({})", k, w);}
     if w > seq.len() {bail!("w ({}) > sequence length ({})", w, seq.len());}
 
-    let mut minimizers: Vec<&[char]> = Vec::new();
+    let mut unified_minimizers: HashMap<&[char], usize> = HashMap::new();
     for idx in 0..seq.len() - w {
-        let base_window = &seq[idx..idx + w];
-        let base_kmers = generate_kmers(base_window, k)?;
-        let base_minimizer = base_kmers
+        let window = &seq[idx..idx + w];
+        let kmers: Vec<&[char]> = generate_kmers(window, k)?;
+        let unified_kmers: Vec<(&[char], usize)> = kmers
+            .iter()
+            .cloned()
+            .zip(kmers
                 .iter()
-                .min_by_key(|item| my_hash_function(item, seed))
+                .map(|&kmer| *unified_minimizers.get(&kmer).unwrap_or(&0_usize)))
+            .collect();
+        let minimizer = unified_kmers
+                .iter()
+                .min_by_key(|(item, o_n)| my_unified_hash_function(item, *o_n, seed))
                 .unwrap();
-        minimizers.push(base_minimizer);
+        match unified_minimizers.get_mut(minimizer.0) {
+            Some(occurrence_number) => *occurrence_number += 1,
+            _ => {unified_minimizers.insert(minimizer.0, minimizer.1);}
+        }
     }
-    Ok(minimizers)
+    Ok(unified_minimizers)
 }
 
-/* This function calculates the euclidean distance between kmer-vector representations
-* of minimizer representations of strings. */
-pub fn minimizer_euclidean_distance(params: SequenceBasedParameters) -> Result<f64> {
-    let base_minimizers = generate_minimizers(&params.base_sequence, params.w, params.k)?;
-    let mod_minimizers = generate_minimizers(&params.modified_sequence, params.w, params.k)?;
-
-    euclidean_distance_from_kmers(KmerBasedParameters {
-        base_kmers: base_minimizers, modified_kmers: mod_minimizers,
-        k: params.k, w: params.w
-    })
-}
-
-/* I haven't implemented this yet and I also don't know how it works :) */
-pub fn strobemer(_params: SequenceBasedParameters) -> Result<f64> {
-    unimplemented!();
+pub fn kmer_euclidean_distance_from_unified_kmers(
+    base_minimizers: HashMap<&[char], usize>,
+    mod_minimizers: HashMap<&[char], usize>,
+    k: usize,
+    w: usize
+) -> Result<f64> {
+    Ok(0.0)
 }
 
 /*  */
-pub fn ordered_minimizer_euclidean_distance(_params: SequenceBasedParameters) -> Result<f64> {
-    unimplemented!();
-}
-
-/*  */
-pub fn weighted_minimizer_euclidean_distance(_params: SequenceBasedParameters) -> Result<f64> {
+pub fn ordered_minimizer_euclidean_distance(
+    base_seq: &[char],
+    mod_seq: &[char],
+    k: usize,
+    w: usize
+) -> Result<f64> {
     unimplemented!();
 }
 
 /* This is the final goal of my project! */
-pub fn tensor_slide_sketch(_params: SequenceBasedParameters) -> Result<f64> {
+pub fn tensor_slide_sketch(base_seq: &[char],
+    mod_seq: &[char],
+    k: usize,
+    w: usize
+) -> Result<f64> {
     unimplemented!();
 }
 
 #[cfg(test)]
 mod similarity_method_tests {
-    use crate::utils::tensor::{cosine_similarity, minimizer_euclidean_distance, strobemer};
-
-    use super::{SequenceBasedParameters, euclidean_distance};
     use pretty_assertions::assert_eq;
 
-    // KMER VECTOR L2 NORM TESTS
-    fn test_euclidean_distance(p: SequenceBasedParameters, expected: f64)  {
-        let res = euclidean_distance(p);
+    use crate::utils::tensor::{
+        kmer_euclidean_distance,
+        kmer_cosine_similarity,
+        minimizer_euclidean_distance,
+        strobemer_euclidean_distance
+    };
+
+    #[test]
+    fn kmer_euclidean_distance_test_1() {
+        let k = 4;
+        let step = k / 2;
+
+        let seq1: Vec<char> = "ACGTTGCA".chars().collect();
+        let seq2 = seq1.clone();
+        let expected = 0.0;
+
+        let res = kmer_euclidean_distance(&seq1, &seq2, k, step);
         assert!(res.is_ok());
         assert_eq!(res.unwrap(), expected);
-    }
-    #[test]
-    fn test_euclidean_distance_equal_k1() {
-        // k=1, same number of each character, should result in euclidean_distance = 0.0
-        let p = SequenceBasedParameters {
-            k: 1,
-            w: 1, // irrelevant for euclidean_distance
-            base_sequence: "ACGT".chars().collect(),
-            modified_sequence: "GCAT".chars().collect(),
-        };
-        test_euclidean_distance(p, 0.0);
-    }
-    #[test]
-    fn test_euclidean_distance_equal_k2() {
-        // k=2, same number of 2-mers, should result in euclidean_distance = 0.0
-        let p = SequenceBasedParameters {
-            k: 2,
-            w: 1, // irrelevant for euclidean_distance
-            base_sequence: "ACGTA".chars().collect(),
-            modified_sequence: "CGTAC".chars().collect(),
-        };
-        test_euclidean_distance(p, 0.0);
-    }
-    #[test]
-    fn test_euclidean_distance_unequal_k1() {
-        // k=1, unequal character set
-        let p = SequenceBasedParameters {
-            k: 1,
-            w: 1, // irrelevant for euclidean_distance
-            base_sequence: "GTTTTT".chars().collect(),
-            modified_sequence: "ATTTTT".chars().collect(),
-        };
-        test_euclidean_distance(p, 1.4142135623730951); // square root 2
-    }
-    #[test]
-    fn test_euclidean_distance_unequal_k2() {
-        // k=2, unequal 2-mer set, should result in euclidean_distance = sqrt(2)
-        let p = SequenceBasedParameters {
-            k: 1,
-            w: 1, // irrelevant for euclidean_distance
-            base_sequence: "GTTTTT".chars().collect(),
-            modified_sequence: "ATTTTT".chars().collect(),
-        };
-        test_euclidean_distance(p, 1.4142135623730951);
     }
 
-    // COSINE SIMILARITY TESTS
-    fn test_cosine_similarity(p: SequenceBasedParameters, expected: f64) {
-        let res = cosine_similarity(p);
+    #[test]
+    fn  kmer_cosine_similarity_test_1() {
+        let k = 4;
+        let step = k / 2;
+
+        let seq1: Vec<char> = "ACGTTGCA".chars().collect();
+        let seq2 = seq1.clone();
+        let expected = 0.0;
+        let res =  kmer_cosine_similarity(&seq1, &seq2, k, step);
         assert!(res.is_ok());
         assert_eq!(res.unwrap(), expected);
-    }
-    #[test]
-    fn test_cosine_similarity_equal_k1() {
-        // k=2, unequal 2-mer set, should result in euclidean_distance = sqrt(2)
-        let p = SequenceBasedParameters {
-            k: 1,
-            w: 1, // irrelevant for euclidean_distance
-            base_sequence: "ACTG".chars().collect(),
-            modified_sequence: "CTAG".chars().collect(),
-        };
-        test_cosine_similarity(p, 1.0);
-    }
-    #[test]
-    fn test_cosine_similarity_equal_k2() {
-        // k=2, unequal 2-mer set, should result in euclidean_distance = sqrt(2)
-        let p = SequenceBasedParameters {
-            k: 2,
-            w: 1, // irrelevant for euclidean_distance
-            base_sequence: "ACTGA".chars().collect(),
-            modified_sequence: "CTGAC".chars().collect(),
-        };
-        test_cosine_similarity(p, 1.0);
-    }
-    #[test]
-    fn test_cosine_similarity_unequal_k2() {
-        // k=2, unequal 2-mer set, should result in euclidean_distance = sqrt(2)
-        let p = SequenceBasedParameters {
-            k: 2,
-            w: 1, // irrelevant for euclidean_distance
-            base_sequence: "ACTGG".chars().collect(),
-            modified_sequence: "CTGAC".chars().collect(),
-        };
-        test_cosine_similarity(p, 0.75);
-    }
-    #[test]
-    fn test_cosine_similarity_unequal_k1() {
-        // k=2, unequal 2-mer set, should result in euclidean_distance = sqrt(2)
-        let p = SequenceBasedParameters {
-            k: 1,
-            w: 1, // irrelevant for euclidean_distance
-            base_sequence: "GTT".chars().collect(),
-            modified_sequence: "ATT".chars().collect(),
-        };
-        test_cosine_similarity(p, 0.7999999999999998);
     }
 
-    // MINIMIZER L2 NORM TESTS
-    fn test_minimizer_euclidean_distance(p: SequenceBasedParameters, expected: f64) {
-        let res = minimizer_euclidean_distance(p);
-        assert!(res.is_ok());
-        assert_eq!(res.unwrap(), expected);
-    }
     #[test]
-    fn test_minimizer_euclidean_distance_equal_w1() {
-        // Some less trivial example?
-        let p = SequenceBasedParameters {
-            k: 1,
-            w: 1,
-            base_sequence: "AAA".chars().collect(),
-            modified_sequence: "AAA".chars().collect(),
-        };
-        test_minimizer_euclidean_distance(p, 0.0);
-    }
-    #[test]
-    fn test_minimizer_euclidean_distance_equal_w3() {
-        // Some less trivial example?
-        let p = SequenceBasedParameters {
-            k: 2,
-            w: 3,
-            base_sequence: "AAAAA".chars().collect(),
-            modified_sequence: "AAAAA".chars().collect(),
-        };
-        test_minimizer_euclidean_distance(p, 0.0);
-    }
-    #[test]
-    fn test_minimizer_euclidean_distance_unequal_k3_w_equals_l() {
-        // Some less trivial example?
-        let p = SequenceBasedParameters {
-            k: 2,
-            w: 2,
-            base_sequence: "AAAAA".chars().collect(),
-            modified_sequence: "AAACC".chars().collect(),
-        };
-        test_minimizer_euclidean_distance(p, 0.0);
-    }
-    #[test]
-    fn test_minimizer_euclidean_distance_unequal_k2_w4() {
-        let p = SequenceBasedParameters {
-            k: 2,
-            w: 4,
-            base_sequence: "ACTC".chars().collect(),
-            modified_sequence: "ACTG".chars().collect(),
-        };
-        test_minimizer_euclidean_distance(p, 0.0);
-    }
-    #[test]
-    fn test_minimizer_euclidean_distance_unequal_k1_w4_long() {
-        // I should study this one a bit more...
-        let p = SequenceBasedParameters {
-            k: 2,
-            w: 4,
-            base_sequence: "AAAATTTT".chars().collect(),
-            modified_sequence: "AAAAGGGG".chars().collect(),
-        };
-        test_minimizer_euclidean_distance(p, 0.0);
-    }
+    fn minimizer_euclidean_distance_test_1() {
+        let k = 4;
+        let w = 6;
+        let step = w / 2;
 
-    fn test_strobemer(p: SequenceBasedParameters, expected: f64) {
-        let res = strobemer(p);
+        let seq1: Vec<char> = "ACGTTGCA".chars().collect();
+        let seq2 = seq1.clone();
+        let expected = 0.0;
+        let res =  minimizer_euclidean_distance(&seq1, &seq2, k, w, step);
         assert!(res.is_ok());
         assert_eq!(res.unwrap(), expected);
     }
     #[test]
-    fn test_strobemer_equal_k1() {
-        let p = SequenceBasedParameters {
-            k: 1,
-            w: 1,
-            base_sequence: vec!['A', 'C', 'G', 'T'],
-            modified_sequence: vec!['T', 'C', 'A', 'T'],
-        };
-        test_strobemer(p, 0.0);
+    fn strobemer_euclidean_distance_test_1() {
+        let order = 2;
+        let l = 3;
+        let w_min = 6;
+        let w_max  = 12;
+        let step = (w_max - w_min) / 2;
+
+        let seq1: Vec<char> = "ACGTTGCA".chars().collect();
+        let seq2 = seq1.clone();
+        let expected = 0.0;
+        let res = strobemer_euclidean_distance(&seq1, &seq2, order, l, w_min, w_max, step);
+        assert!(res.is_ok());
+        assert_eq!(res.unwrap(), expected);
     }
 }
 
