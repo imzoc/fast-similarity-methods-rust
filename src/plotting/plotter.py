@@ -5,7 +5,15 @@ import pandas as pd
 import numpy as np
 import seaborn as sns
 
-data = pd.read_csv("../../tests/outputs/data_2001_SED_order3_strobe4_gap2_window10.csv")
+data = pd.read_csv("../../tests/outputs/" +
+    "strobemer/" +
+    "data_2001/" +
+    "order_3/" + 
+    "strobe_length_4/" +
+    "strobe_window_gap_2/" +
+    "strobe_window_length_10/" +
+    "data.csv"
+)
 print(data.head())
 
 def plot():
