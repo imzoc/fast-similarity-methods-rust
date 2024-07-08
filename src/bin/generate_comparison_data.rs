@@ -85,7 +85,7 @@ fn run(args: Args) -> Result<()> {
                     .expect("argument 'minimizer_window_length' not provided!"),
                 args.step.clone()
             )?,
-            "strobemer_euclidean_distance" => methods::strobemer_similarity(
+            "strobemer" => methods::strobemer_similarity(
                 &base_seq,
                 &mod_seq,
                 &args.distance_function,
@@ -144,12 +144,14 @@ fn run(args: Args) -> Result<()> {
         .from_path(&args.outfile)?;
     wtr.write_record(&header_row)?;
 
-    for (dist, count) in &edit_distance_counts {
+    let mut sorted_edit_distances: Vec<&usize> = edit_distance_counts.keys().collect();
+    sorted_edit_distances.sort();
+    for dist in sorted_edit_distances {
         let mut row = vec![dist.to_string()];
         row.push(means.get(&dist).unwrap().to_string());
         row.push(lower_bounds.get(&dist).unwrap().to_string());
         row.push(upper_bounds.get(&dist).unwrap().to_string());
-        row.push(count.to_string());
+        row.push(edit_distance_counts.get(&dist).unwrap().to_string());
         wtr.write_record(&row)?;
     }
 
