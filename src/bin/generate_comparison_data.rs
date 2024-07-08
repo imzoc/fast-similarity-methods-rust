@@ -14,7 +14,9 @@ struct Args {
     #[arg(short, long, default_value = "tests/outputs/unnamed_data.csv")]
     outfile: String,
     #[arg(short, long)]
-    estimation_method: String,
+    representation_method: String,
+    #[arg(short, long)]
+    distance_function: String,
     #[arg(long, default_value_t = 1)]
     step: usize,
     #[arg(short, long)]
@@ -22,7 +24,7 @@ struct Args {
     #[arg(short, long)]
     minimizer_window_length: Option<usize>,
     #[arg(long)]
-    strobemer_order: Option<usize>,
+    order: Option<usize>,
     #[arg(long)]
     strobe_length: Option<usize>,
     #[arg(long)]
@@ -33,7 +35,7 @@ struct Args {
 
 #[allow(unused_imports)]
 use similarity_methods::utils::sequence;
-use similarity_methods::utils::tensor;
+use similarity_methods::utils::methods;
 
 /* Using serde to parse CSV data. */
 #[derive(Debug, Deserialize)]
@@ -64,34 +66,30 @@ fn run(args: Args) -> Result<()> {
         let record: DatabaseRecord = result?;
         let base_seq: Vec<char> = record.base_sequence.chars().collect();
         let mod_seq: Vec<char> = record.modified_sequence.chars().collect();        
-        let estimated_distance: f64 = match args.estimation_method.as_str() {
-            "kmer_euclidean_distance" => tensor::kmer_euclidean_distance(
+        let estimated_distance: f64 = match args.representation_method.as_str() {
+            "kmer" => methods::kmer_similarity(
                 &base_seq,
                 &mod_seq,
+                &args.distance_function,
                 args.k.clone()
                     .expect("argument 'k' not provided!"),
                 args.step.clone()
             )?,
-            "kmer_cosine_similarity" => tensor::kmer_cosine_similarity(
+            "minimizer" => methods::minimizer_similarity(
                 &base_seq,
                 &mod_seq,
-                args.k.clone()
-                    .expect("argument 'k' not provided!"),
-                args.step.clone()
-            )?,
-            "minimizer_euclidean_distance" => tensor::minimizer_euclidean_distance(
-                &base_seq,
-                &mod_seq, 
+                &args.distance_function,
                 args.k.clone()
                     .expect("argument 'k' not provided!"),
                 args.minimizer_window_length.clone()
                     .expect("argument 'minimizer_window_length' not provided!"),
                 args.step.clone()
             )?,
-            "strobemer_euclidean_distance" => tensor::strobemer_euclidean_distance(
+            "strobemer_euclidean_distance" => methods::strobemer_similarity(
                 &base_seq,
                 &mod_seq,
-                args.strobemer_order.clone()
+                &args.distance_function,
+                args.order.clone()
                     .expect("argument 'strobemer_order' not provided!"),
                 args.strobe_length.clone()
                     .expect("argument 'strobe_length' not provided!"),
@@ -102,7 +100,7 @@ fn run(args: Args) -> Result<()> {
                 args.step.clone()
             )?,
             _ => {
-                bail!("Unknown estimation method: {}", args.estimation_method.as_str());
+                bail!("Unknown representation method: {}", args.representation_method.as_str());
             }
         };
 
