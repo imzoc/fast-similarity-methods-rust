@@ -1,18 +1,20 @@
 use anyhow::{bail, Result};
 use seahash::SeaHasher;
 use std::hash::{Hash, Hasher};
+use std::collections::HashMap;
+use itertools::Itertools;
 
 use crate::utils::distance_functions;
 
 pub fn kmer_similarity(
     base_seq: &[char],
-    mod_sequence: &[char],
+    mod_seq: &[char],
     distance_function: &str,
     k: usize,
     step: usize
 ) -> Result<f64> {
     let base_kmers = generate_kmers_with_step(base_seq, k, step)?;
-    let mod_kmers = generate_kmers_with_step(mod_sequence, k, step)?;
+    let mod_kmers = generate_kmers_with_step(mod_seq, k, step)?;
 
     distance_functions::match_distance_function(
         base_kmers,
@@ -45,6 +47,84 @@ pub fn generate_kmers_with_step(
         kmers.push(&sequence[i..i + k]);
     }
     Ok(kmers)
+}
+
+/* Gapmer comparison compares k-mers and 1-spaced k-mers to search for
+ * matches over one gap.
+ */
+pub fn gapmer_similarity(
+    base_seq: &[char],
+    mod_seq: &[char],
+    distance_function: &str,
+    k: usize,
+    step: usize
+) -> Result<f64> {
+    let base_kmers = generate_kmers_with_step(base_seq, k, step)?;
+    let mod_kmers = generate_kmers_with_step(mod_seq, k, step)?;
+    let base_gapmers = generate_g_spaced_kmers_with_step(base_seq, k, 1, step)?;
+    let mod_gapmers = generate_g_spaced_kmers_with_step(mod_seq, k, 1, step)?;
+
+    let mut rolling_sum = 0.0;
+    for mask, base_mask_gapmers in base_gapmers {
+        rolling_sum += distance_functions::match_distance_function(
+            base_mask_gapmers.iter().map(|*gapmer| gapmer.to_slice()),
+            mod_kmers,
+            distance_function
+        )?;
+        let mod_mask_gapmers = mod_gapmers.entry(mask);
+        rolling_sum += distance_functions::match_distance_function(
+            mod_mask_gapmers.iter().map(|*gapmer| gapmer.to_slice()),
+            base_kmers,
+            distance_function
+        )?;
+    }
+    Ok(rolling_sum / (base_gapmers.keys().len() * 2))
+}
+
+struct Gapmer<'a> {
+    window: &'a [char],
+    mask: &'a Vec<usize>
+}
+
+impl Gapmer {
+    pub fn to_slice() {
+        // this method returns a string slice without the "don't care" positions
+
+    }
+}
+
+pub fn generate_g_spaced_kmers_with_step(
+    sequence: &[char],
+    k: usize,
+    gaps: usize,
+    step: usize
+) -> Result<HashMap<Vec<usize>, Vec<&[char]>>> {
+    if k + gaps > sequence.len() {
+        bail!(
+            "K ({}) is less than string length {}",
+            k,
+            sequence.len()
+        );
+    }
+
+    let mut spacemers: HashMap<Vec<usize>, Vec<&[char]>>;
+    let mut initial_mask = vec![1; k]; // vector to permute
+    initial_mask.extend(vec![0; gaps]);
+    for permutation in initial_mask.iter().permutations(k + gaps) {
+        let mask: Vec<usize> = permutation.into_iter().copied().collect();
+        let mut mask_spacemers = Vec::new();
+        spacemers.insert(mask, mask_spacemers);
+    }
+
+
+    for i in (0..=(sequence.len() - k)).step_by(step) { // start of window
+        for mask in spacemers.keys() {
+            let window = &sequence[i..i+k+gaps];
+            let spacemer = Gapmer{window, mask};
+            spacemers.entry(mask).push(spacemer);
+        }
+    }
+    Ok(spacemers)
 }
 
 /* This function calculates the euclidean distance between kmer-vector representations

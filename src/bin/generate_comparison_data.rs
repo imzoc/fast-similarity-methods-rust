@@ -15,7 +15,7 @@ struct Args {
     outfile: String,
     #[arg(short, long)]
     representation_method: String,
-    #[arg(short, long)]
+    #[arg(short, long)] 
     distance_function: String,
     #[arg(long, default_value_t = 1)]
     step: usize,

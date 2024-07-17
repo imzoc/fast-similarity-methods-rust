@@ -4,7 +4,7 @@ import itertools
 # Define the parameter values
 A_values = [2001, 3]  # database size
 B_values = ["strobemer"]  # representation method
-X_values = ["euclidean_distance"] # distance function
+X_values = ["euclidean_distance", "jaccard_similarity"] # distance function
 C_values = [2, 3]  # order
 D_values = [7, 8]  # strobe_length
 E_values = [5]  # strobe_window_gap
