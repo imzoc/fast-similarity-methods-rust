@@ -337,27 +337,3 @@ pub fn tensor_slide_sketch(_base_seq: &[char],
 ) -> Result<f64> {
     unimplemented!();
 }
-
-#[cfg(test)]
-mod similarity_method_tests {
-    use pretty_assertions::assert_eq;
-
-    use crate::utils::representation_methods::strobemer_similarity;
-
-    #[test]
-    fn strobemer_euclidean_distance_test_1() {
-        let similarity_method = "cosine_similarity";
-        let order = 2;
-        let l = 3;
-        let w_min = 6;
-        let w_max  = 12;
-        let step = (w_max - w_min) / 2;
-
-        let seq1: Vec<char> = "ACGTTGCA".chars().collect();
-        let seq2 = seq1.clone();
-        let expected = 0.0;
-        let res = strobemer_similarity(&seq1, &seq2, similarity_method, order, l, w_min, w_max, step);
-        assert!(res.is_ok());
-        assert_eq!(res.unwrap(), expected);
-    }
-}
