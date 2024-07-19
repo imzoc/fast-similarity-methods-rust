@@ -20,7 +20,7 @@ seahash = "4.1.0"
 itertools = "0.10"
 
 [lib]
-name = "similarity_methods"  # This name will be used to reference the library
+name = "alignment_free_methods"  # This name will be used to reference the library
 path = "src/lib.rs"  # Specify the path to your library file
 
 [[bin]]

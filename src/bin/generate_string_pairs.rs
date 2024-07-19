@@ -1,7 +1,7 @@
 use std::fs::File;
 use std::io::{Write, Result};
 
-use similarity_methods::utils::sequence::generate_pair;
+use alignment_free_methods::utils::sequence::generate_pair;
 
 /*
  * This script generates a bunch of string pairs with varying pre-computed

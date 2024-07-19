@@ -71,7 +71,7 @@ impl Tensor {
         Some(index)
     }
 
-    pub fn populate(&mut self,  kmers: &Vec<&[char]>) -> Result<()> {
+    pub fn populate(&mut self,  kmers: &Vec<Vec<char>>) -> Result<()> {
         let dimensions = self.shape.len();
         //const ALPHABET: [char; 4] = ['A', 'C', 'T', 'G']; // unused
 

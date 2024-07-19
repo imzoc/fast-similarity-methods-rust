@@ -31,11 +31,13 @@ struct Args {
     strobe_window_gap: Option<usize>,
     #[arg(long)]
     strobe_window_length: Option<usize>,
+    #[arg(long)]
+    gaps: Option<usize>
 }
 
 #[allow(unused_imports)]
-use similarity_methods::utils::sequence;
-use similarity_methods::utils::representation_methods;
+use alignment_free_methods::utils::sequence;
+use alignment_free_methods::utils::representation_methods;
 
 /* Using serde to parse CSV data. */
 #[derive(Debug, Deserialize)]
@@ -98,6 +100,16 @@ fn run(args: Args) -> Result<()> {
                 args.strobe_window_length.clone()
                     .expect("argument 'strobe_window_length' not provided!"),
                 args.step.clone()
+            )?,
+            "gapmer" => representation_methods::gapmer_similarity(
+                &base_seq,
+                &mod_seq,
+                &args.similarity_method,
+                args.k.clone()
+                    .expect("argument 'k' not provided!"),
+                args.gaps.clone()
+                    .expect("argument 'gaps' not provided!"),
+                args.step.clone(),
             )?,
             _ => {
                 bail!("Unknown representation method: {}", args.representation_method.as_str());

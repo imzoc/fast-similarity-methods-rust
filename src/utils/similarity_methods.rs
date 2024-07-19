@@ -5,8 +5,8 @@ use std::collections::HashMap;
 
 
 pub fn match_similarity_method(
-    base_item_bag: Vec<&[char]>,
-    mod_item_bag: Vec<&[char]>,
+    base_item_bag: &Vec<Vec<char>>,
+    mod_item_bag: &Vec<Vec<char>>,
     similarity_method: &str
 ) -> Result<f64> {
     match similarity_method {
@@ -18,10 +18,10 @@ pub fn match_similarity_method(
     }
 }
 
-pub fn frequency_vectors<'a>(base_item_bag: Vec<&'a [char]>, mod_item_bag: Vec<&'a [char]>
-) -> (HashMap<&'a [char], f64>, HashMap<&'a [char], f64>) {
-    let mut base_item_counts: HashMap<&[char], f64> = HashMap::new();
-    let mut mod_item_counts: HashMap<&[char], f64> = HashMap::new();
+pub fn frequency_vectors<'a>(base_item_bag: &'a Vec<Vec<char>>, mod_item_bag: &'a Vec<Vec<char>>
+) -> (HashMap<&'a Vec<char>, f64>, HashMap<&'a Vec<char>, f64>) {
+    let mut base_item_counts: HashMap<&Vec<char>, f64> = HashMap::new();
+    let mut mod_item_counts: HashMap<&Vec<char>, f64> = HashMap::new();
     for item in base_item_bag {
         base_item_counts.entry(item).and_modify(|count| *count += 1.0).or_insert(1.0);
         mod_item_counts.entry(item).or_insert(0.0);
@@ -33,7 +33,7 @@ pub fn frequency_vectors<'a>(base_item_bag: Vec<&'a [char]>, mod_item_bag: Vec<&
     (base_item_counts, mod_item_counts)
 }
 
-pub fn euclidean_distance(base_item_bag: Vec<&[char]>, mod_item_bag: Vec<&[char]>,
+pub fn euclidean_distance(base_item_bag: &Vec<Vec<char>>, mod_item_bag: &Vec<Vec<char>>,
 ) -> Result<f64> {
     let (base_item_counts, mod_item_counts) = frequency_vectors(base_item_bag, mod_item_bag);
 
@@ -48,7 +48,7 @@ pub fn euclidean_distance(base_item_bag: Vec<&[char]>, mod_item_bag: Vec<&[char]
 /* This function calculates the cosine similarity between two strings' kmeer vectors.
  * cosine similarity = (v1 * v2) / (||v1|| * ||v2||)
  */
-pub fn cosine_similarity(base_item_bag: Vec<&[char]>, mod_item_bag: Vec<&[char]>
+pub fn cosine_similarity(base_item_bag: &Vec<Vec<char>>, mod_item_bag: &Vec<Vec<char>>
 ) -> Result<f64> {
     let (base_item_counts, mod_item_counts) = frequency_vectors(base_item_bag, mod_item_bag);
     
@@ -67,7 +67,7 @@ pub fn cosine_similarity(base_item_bag: Vec<&[char]>, mod_item_bag: Vec<&[char]>
     Ok(dot_product / (base_magnitude.sqrt() * mod_magnitude.sqrt()))
 }
 
-pub fn jaccard_similarity(base_item_bag: Vec<&[char]>, mod_item_bag: Vec<&[char]>
+pub fn jaccard_similarity(base_item_bag: &Vec<Vec<char>>, mod_item_bag: &Vec<Vec<char>>
 ) -> Result<f64> {
     let (base_item_counts, mod_item_counts) = frequency_vectors(base_item_bag, mod_item_bag);
 
@@ -81,7 +81,7 @@ pub fn jaccard_similarity(base_item_bag: Vec<&[char]>, mod_item_bag: Vec<&[char]
     Ok(intersection / union)
 }
 
-pub fn minhash_similarity(base_item_bag: Vec<&[char]>, mod_item_bag: Vec<&[char]>
+pub fn minhash_similarity(base_item_bag: &Vec<Vec<char>>, mod_item_bag: &Vec<Vec<char>>
 ) -> Result<f64> {
     fn hash_function<T: Hash + ?Sized> (item: &T, seed: u64) -> u64 {
         let mut hasher = SeaHasher::with_seeds(seed, seed, seed, seed);
