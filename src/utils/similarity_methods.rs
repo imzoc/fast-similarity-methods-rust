@@ -4,17 +4,17 @@ use std::hash::{Hash, Hasher};
 use std::collections::HashMap;
 
 
-pub fn match_distance_function(
+pub fn match_similarity_method(
     base_item_bag: Vec<&[char]>,
     mod_item_bag: Vec<&[char]>,
-    distance_function: &str
+    similarity_method: &str
 ) -> Result<f64> {
-    match distance_function {
+    match similarity_method {
         "euclidean_distance" => euclidean_distance(base_item_bag, mod_item_bag),
         "cosine_similarity" => cosine_similarity(base_item_bag, mod_item_bag),
         "jaccard_similarity" => jaccard_similarity(base_item_bag, mod_item_bag),
         "minhash" => minhash_similarity(base_item_bag, mod_item_bag),
-        _ => {bail!("Unknown distance function: {}", distance_function);}
+        _ => {bail!("Unknown distance function: {}", similarity_method);}
     }
 }
 

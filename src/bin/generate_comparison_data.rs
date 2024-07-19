@@ -9,14 +9,14 @@ use std::io::{self,Write};
 #[command(about, author, version)]
 /// Similarity Methods
 struct Args {
-    #[arg(short, long)]
+    #[arg(short='i', long)]
     sequence_db: String,
     #[arg(short, long, default_value = "tests/outputs/unnamed_data.csv")]
     outfile: String,
-    #[arg(short, long)]
+    #[arg(long)]
     representation_method: String,
-    #[arg(short, long)] 
-    distance_function: String,
+    #[arg(long)] 
+    similarity_method: String,
     #[arg(long, default_value_t = 1)]
     step: usize,
     #[arg(short, long)]
@@ -35,7 +35,7 @@ struct Args {
 
 #[allow(unused_imports)]
 use similarity_methods::utils::sequence;
-use similarity_methods::utils::methods;
+use similarity_methods::utils::representation_methods;
 
 /* Using serde to parse CSV data. */
 #[derive(Debug, Deserialize)]
@@ -67,28 +67,28 @@ fn run(args: Args) -> Result<()> {
         let base_seq: Vec<char> = record.base_sequence.chars().collect();
         let mod_seq: Vec<char> = record.modified_sequence.chars().collect();        
         let estimated_distance: f64 = match args.representation_method.as_str() {
-            "kmer" => methods::kmer_similarity(
+            "kmer" => representation_methods::kmer_similarity(
                 &base_seq,
                 &mod_seq,
-                &args.distance_function,
+                &args.similarity_method,
                 args.k.clone()
                     .expect("argument 'k' not provided!"),
                 args.step.clone()
             )?,
-            "minimizer" => methods::minimizer_similarity(
+            "minimizer" => representation_methods::minimizer_similarity(
                 &base_seq,
                 &mod_seq,
-                &args.distance_function,
+                &args.similarity_method,
                 args.k.clone()
                     .expect("argument 'k' not provided!"),
                 args.minimizer_window_length.clone()
                     .expect("argument 'minimizer_window_length' not provided!"),
                 args.step.clone()
             )?,
-            "strobemer" => methods::strobemer_similarity(
+            "strobemer" => representation_methods::strobemer_similarity(
                 &base_seq,
                 &mod_seq,
-                &args.distance_function,
+                &args.similarity_method,
                 args.order.clone()
                     .expect("argument 'strobemer_order' not provided!"),
                 args.strobe_length.clone()

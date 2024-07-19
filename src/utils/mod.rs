@@ -1,4 +1,4 @@
-pub mod methods;
+pub mod representation_methods;
 pub mod sequence;
-pub mod distance_functions;
+pub mod similarity_methods;
 pub mod tensor;

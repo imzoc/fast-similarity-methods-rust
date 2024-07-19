@@ -1,6 +1,6 @@
 use anyhow::{anyhow, bail, Result};
 
-use crate::utils::methods;
+use crate::utils::representation_methods;
 
 #[derive(Debug)]
 pub struct Tensor {
@@ -20,7 +20,7 @@ impl Tensor {
 
     pub fn construct_with_step(sequence: &[char], k: usize, step: usize) -> Result<Self> {
         let mut tensor = Tensor::new_empty(k);
-        let kmers = methods::generate_kmers_with_step(sequence, k, step)?;
+        let kmers = representation_methods::generate_kmers_with_step(sequence, k, step)?;
         tensor.populate(&kmers)?;
         Ok(tensor)
     }

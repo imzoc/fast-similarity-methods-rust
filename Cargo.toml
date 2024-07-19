@@ -1,5 +1,5 @@
 [package]
-name = "similarity_methods"
+name = "alignment_free_methods"
 version = "0.1.0"
 edition = "2021"
 default-run = "generate_comparison_data"

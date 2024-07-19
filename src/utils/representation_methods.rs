@@ -4,22 +4,22 @@ use std::hash::{Hash, Hasher};
 use std::collections::HashMap;
 use itertools::Itertools;
 
-use crate::utils::distance_functions;
+use crate::utils::similarity_methods;
 
 pub fn kmer_similarity(
     base_seq: &[char],
     mod_seq: &[char],
-    distance_function: &str,
+    similarity_method: &str,
     k: usize,
     step: usize
 ) -> Result<f64> {
     let base_kmers = generate_kmers_with_step(base_seq, k, step)?;
     let mod_kmers = generate_kmers_with_step(mod_seq, k, step)?;
 
-    distance_functions::match_distance_function(
+    similarity_methods::match_similarity_method(
         base_kmers,
         mod_kmers,
-        distance_function
+        similarity_method
     )
 }
 
@@ -55,7 +55,7 @@ pub fn generate_kmers_with_step(
 pub fn gapmer_similarity(
     base_seq: &[char],
     mod_seq: &[char],
-    distance_function: &str,
+    similarity_method: &str,
     k: usize,
     step: usize
 ) -> Result<f64> {
@@ -63,33 +63,40 @@ pub fn gapmer_similarity(
     let mod_kmers = generate_kmers_with_step(mod_seq, k, step)?;
     let base_gapmers = generate_g_spaced_kmers_with_step(base_seq, k, 1, step)?;
     let mod_gapmers = generate_g_spaced_kmers_with_step(mod_seq, k, 1, step)?;
+    let n_gapmers = mod_gapmers.keys().len() as f64;
 
     let mut rolling_sum = 0.0;
-    for mask, base_mask_gapmers in base_gapmers {
-        rolling_sum += distance_functions::match_distance_function(
-            base_mask_gapmers.iter().map(|*gapmer| gapmer.to_slice()),
-            mod_kmers,
-            distance_function
-        )?;
-        let mod_mask_gapmers = mod_gapmers.entry(mask);
-        rolling_sum += distance_functions::match_distance_function(
-            mod_mask_gapmers.iter().map(|*gapmer| gapmer.to_slice()),
-            base_kmers,
-            distance_function
+    for (_, base_mask_gapmers) in base_gapmers {
+        rolling_sum += similarity_methods::match_similarity_method(
+            base_mask_gapmers.iter().map(|gapmer| gapmer.to_slice()).collect(),
+            mod_kmers.clone(),
+            similarity_method
         )?;
     }
-    Ok(rolling_sum / (base_gapmers.keys().len() * 2))
+    for (_, mod_mask_gapmers) in mod_gapmers {
+            rolling_sum += similarity_methods::match_similarity_method(
+            mod_mask_gapmers.iter().map(|gapmer| gapmer.to_slice()).collect(),
+            base_kmers.clone(),
+            similarity_method
+        )?;
+    }
+    Ok(rolling_sum / (n_gapmers * 2.0))
 }
 
-struct Gapmer<'a> {
+pub struct Gapmer<'a> {
     window: &'a [char],
-    mask: &'a Vec<usize>
+    mask: Mask
 }
 
-impl Gapmer {
-    pub fn to_slice() {
-        // this method returns a string slice without the "don't care" positions
+#[derive(Clone, Eq, PartialEq, Hash)]
+pub struct Mask {
+    mask: Vec<char>
+}
 
+impl Gapmer<'_> {
+    pub fn to_slice(&self) -> &[char]{
+        // this method returns a string slice without the "don't care" positions
+        self.window
     }
 }
 
@@ -98,7 +105,7 @@ pub fn generate_g_spaced_kmers_with_step(
     k: usize,
     gaps: usize,
     step: usize
-) -> Result<HashMap<Vec<usize>, Vec<&[char]>>> {
+) -> Result<HashMap<Mask, Vec<Gapmer>>> {
     if k + gaps > sequence.len() {
         bail!(
             "K ({}) is less than string length {}",
@@ -107,21 +114,17 @@ pub fn generate_g_spaced_kmers_with_step(
         );
     }
 
-    let mut spacemers: HashMap<Vec<usize>, Vec<&[char]>>;
-    let mut initial_mask = vec![1; k]; // vector to permute
-    initial_mask.extend(vec![0; gaps]);
+    let mut spacemers: HashMap<Mask, Vec<Gapmer>> = Default::default();
+
+    let mut initial_mask = vec!['1'; k]; // vector to permute
+    initial_mask.extend(vec!['0'; gaps]);
     for permutation in initial_mask.iter().permutations(k + gaps) {
-        let mask: Vec<usize> = permutation.into_iter().copied().collect();
-        let mut mask_spacemers = Vec::new();
-        spacemers.insert(mask, mask_spacemers);
-    }
+        let mask: Mask = Mask{mask: permutation.into_iter().copied().collect()};
 
-
-    for i in (0..=(sequence.len() - k)).step_by(step) { // start of window
-        for mask in spacemers.keys() {
+        for i in (0..=(sequence.len() - k)).step_by(step) { // start of window
             let window = &sequence[i..i+k+gaps];
-            let spacemer = Gapmer{window, mask};
-            spacemers.entry(mask).push(spacemer);
+            let spacemer = Gapmer{window: window, mask: mask.clone()};
+            spacemers.entry(mask.clone()).or_insert(Vec::new()).push(spacemer);
         }
     }
     Ok(spacemers)
@@ -132,7 +135,7 @@ pub fn generate_g_spaced_kmers_with_step(
 pub fn minimizer_similarity(
     base_seq: &[char],
     mod_seq: &[char],
-    distance_function: &str,
+    similarity_method: &str,
     k: usize,
     w: usize,
     step: usize
@@ -140,10 +143,10 @@ pub fn minimizer_similarity(
     let base_minimizers = generate_minimizers(base_seq, k, w, step)?;
     let mod_minimizers = generate_minimizers(mod_seq, k, w, step)?;
 
-    distance_functions::match_distance_function(
+    similarity_methods::match_similarity_method(
         base_minimizers,
         mod_minimizers,
-        distance_function
+        similarity_method
     )
 }
 
@@ -237,7 +240,7 @@ of a window within the strobemer's span. Specifically, that window is:
 pub fn strobemer_similarity(
     base_seq: &[char],
     mod_seq: &[char],
-    distance_function: &str,        // distance function to be used (e.g. cosine similarity).
+    similarity_method: &str,        // distance function to be used (e.g. cosine similarity).
     order: usize,                   // the number of concatenated strobes in each strobemer.
     strobe_length: usize,           // the length of each strobe.
     strobe_window_gap: usize,       // the gap between strobe selection windows.
@@ -270,7 +273,7 @@ pub fn strobemer_similarity(
     let mod_strobemers_chars: Vec<&[char]> = mod_strobemers
         .iter().map(|strobemer| strobemer.data_ref()).collect();
 
-    distance_functions::match_distance_function(base_strobemers_chars, mod_strobemers_chars, distance_function)
+    similarity_methods::match_similarity_method(base_strobemers_chars, mod_strobemers_chars, similarity_method)
 }
 
 /* HELPER FUNCTION FOR strobemer_euclidean_distance()
@@ -344,11 +347,11 @@ pub fn tensor_slide_sketch(base_seq: &[char],
 mod similarity_method_tests {
     use pretty_assertions::assert_eq;
 
-    use crate::utils::methods::strobemer_similarity;
+    use crate::utils::representation_methods::strobemer_similarity;
 
     #[test]
     fn strobemer_euclidean_distance_test_1() {
-        let distance_function = "cosine_similarity";
+        let similarity_method = "cosine_similarity";
         let order = 2;
         let l = 3;
         let w_min = 6;
@@ -358,7 +361,7 @@ mod similarity_method_tests {
         let seq1: Vec<char> = "ACGTTGCA".chars().collect();
         let seq2 = seq1.clone();
         let expected = 0.0;
-        let res = strobemer_similarity(&seq1, &seq2, distance_function, order, l, w_min, w_max, step);
+        let res = strobemer_similarity(&seq1, &seq2, similarity_method, order, l, w_min, w_max, step);
         assert!(res.is_ok());
         assert_eq!(res.unwrap(), expected);
     }
