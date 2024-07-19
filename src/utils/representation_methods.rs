@@ -1,7 +1,7 @@
 use anyhow::{bail, ensure, Result};
 use seahash::SeaHasher;
 use std::hash::{Hash, Hasher};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use itertools::Itertools;
 
 use crate::utils::similarity_methods;
@@ -132,13 +132,14 @@ pub fn generate_g_spaced_kmers_with_step(
     // at the start and the end of the mask, so we don't permute those.
     let mut initial_mask = vec!['1'; k - 2];
     initial_mask.extend(vec!['0'; gaps]);
-    for permutation in initial_mask.iter().permutations(k + gaps) {
+    let permutations: HashSet<_> = initial_mask.iter().permutations(initial_mask.len()).collect();
+    for permutation in permutations {
         let mask: Vec<char> = std::iter::once('1')
             .chain(permutation.into_iter().copied())
             .chain(std::iter::once('1'))
             .collect();
 
-        for i in (0..=(sequence.len() - k)).step_by(step) { // start of window
+        for i in (0..(sequence.len() - k - gaps + 1)).step_by(step) { // start of window
             let window = &sequence[i..i+k+gaps];
             let spacemer = window
                 .iter()

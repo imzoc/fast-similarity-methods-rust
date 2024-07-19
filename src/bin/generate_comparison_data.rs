@@ -3,7 +3,10 @@ use clap::Parser;
 use csv::{ReaderBuilder, WriterBuilder};
 use serde::Deserialize;
 use std::collections::HashMap;
-use std::io::{self,Write};
+use std::io::{self, Write};
+use std::fs::File;
+
+use std::time::Instant;
 
 #[derive(Debug, Parser)]
 #[command(about, author, version)]
@@ -58,6 +61,8 @@ fn main() {
 // --------------------------------------------------
 // See this repo's README file for pseudocode
 fn run(args: Args) -> Result<()> {
+    let start = Instant::now();
+
     // Rolling magnitude and variability data.
     let mut edit_distance_sums: HashMap<usize, f64> = HashMap::new();
     let mut edit_distance_squared_sums: HashMap<usize, f64> = HashMap::new();
@@ -126,6 +131,9 @@ fn run(args: Args) -> Result<()> {
         print!("\rString pair #{:?} has been processed!", i);
         io::stdout().flush().unwrap();
     }
+    let duration = start.elapsed();
+    let mut file = File::create(format!("{}{}", &args.outfile, ".benchmark.log"))?;
+    write!(file, "{:?}", duration)?;
 
     // Compute mean and confidence intervals from rolling data.
     let mut lower_bounds: HashMap<usize, f64> = HashMap::new();

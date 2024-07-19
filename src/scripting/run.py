@@ -87,7 +87,7 @@ def strobemer1():
 def gapmer1():
     db_size = 2001
     sim_method = "jaccard_similarity"
-    k = 15
+    k = 10
     gaps = 1
     step = 4
 
