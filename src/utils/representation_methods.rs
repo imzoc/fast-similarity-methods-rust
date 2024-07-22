@@ -3,6 +3,9 @@ use seahash::SeaHasher;
 use std::hash::{Hash, Hasher};
 use std::collections::{HashMap, HashSet};
 use itertools::Itertools;
+use rand::seq::SliceRandom;
+use rand::thread_rng;
+
 
 use crate::utils::similarity_methods;
 
@@ -66,7 +69,6 @@ pub fn gapmer_similarity(
     let mod_kmers = generate_kmers_with_step(mod_seq, k, step)?;
     let base_gapmers = generate_g_spaced_kmers_with_step(base_seq, k, gaps, step)?;
     let mod_gapmers = generate_g_spaced_kmers_with_step(mod_seq, k, gaps, step)?;
-    let n_gapmers = mod_gapmers.keys().len() as f64;
 
     let mut rolling_sum = 0.0;
     for (_, base_mask_gapmers) in base_gapmers {
@@ -83,7 +85,7 @@ pub fn gapmer_similarity(
             similarity_method
         )?;
     }
-    Ok(rolling_sum / (n_gapmers * 2.0))
+    Ok(rolling_sum)
 }
 
 
@@ -99,30 +101,46 @@ pub fn spaced_kmer_similarity(
     step: usize
 ) -> Result<f64> {
     ensure!(spaces > 0);
-    let base_spacemers = generate_g_spaced_kmers_with_step(base_seq, k, spaces, step)?;
-    let mod_spacemers = generate_g_spaced_kmers_with_step(mod_seq, k, spaces, step)?;
-    let n_spacemers = mod_spacemers.keys().len() as f64;
+    let n_masks = 5; // IMPORTANT PARAMETER
+    let masks = generate_n_masks(k, spaces, n_masks);
 
     let mut rolling_sum = 0.0;
-    for (mask, base_mask_spacemers) in base_spacemers {
-        let mod_mask_spacemers = mod_spacemers.get(&mask).expect("spacemer mask has no entry");
+    for mask in masks {
+        let base_spacemers = generate_masked_seeds(&base_seq, &mask, step)?;
+        let mod_spacemers = generate_masked_seeds(&mod_seq, &mask, step)?;
         rolling_sum += similarity_methods::match_similarity_method(
-            &base_mask_spacemers,
-            &mod_mask_spacemers,
+            &base_spacemers,
+            &mod_spacemers,
             similarity_method
         )?;
     }
-    Ok(rolling_sum / (n_spacemers * 2.0))
+    Ok(rolling_sum)
 }
 
+pub fn generate_n_masks(k: usize, spaces: usize, n: usize) -> Vec<Vec<char>> {
+    let mut rng = thread_rng();
+    let mut masks = Vec::new();
+    let mut initial_mask = vec!['1'; k - 2];
+    initial_mask.extend(vec!['0'; spaces]);
+    for _ in 0..n {
+        let mut perm = initial_mask.clone();
+        perm.shuffle(&mut rng);
+        let mask: Vec<char> = std::iter::once('1')
+            .chain(perm.iter().copied())
+            .chain(std::iter::once('1'))
+            .collect();
+        masks.push(mask);
+    }
+    masks
+}
 pub fn generate_g_spaced_kmers_with_step(
     sequence: &[char],
     k: usize,
-    gaps: usize,
+    spaces: usize,
     step: usize
 ) -> Result<HashMap<Vec<char>, Vec<Vec<char>>>> {
-    ensure!(k + gaps <= sequence.len(), format!(
-        "k + gaps ({:?}) is greater than string length ({:?})", k + gaps, sequence.len())
+    ensure!(k + spaces <= sequence.len(), format!(
+        "k + spaces ({:?}) is greater than string length ({:?})", k + spaces, sequence.len())
     );
     ensure!(k > 1, format!("k ({:?}) < 2", k));
 
@@ -131,7 +149,7 @@ pub fn generate_g_spaced_kmers_with_step(
     // create an initial mask to permute. Two "care" indices will always exist
     // at the start and the end of the mask, so we don't permute those.
     let mut initial_mask = vec!['1'; k - 2];
-    initial_mask.extend(vec!['0'; gaps]);
+    initial_mask.extend(vec!['0'; spaces]);
     let permutations: HashSet<_> = initial_mask.iter().permutations(initial_mask.len()).collect();
     for permutation in permutations {
         let mask: Vec<char> = std::iter::once('1')
@@ -139,8 +157,8 @@ pub fn generate_g_spaced_kmers_with_step(
             .chain(std::iter::once('1'))
             .collect();
 
-        for i in (0..(sequence.len() - k - gaps + 1)).step_by(step) { // start of window
-            let window = &sequence[i..i+k+gaps];
+        for i in (0..(sequence.len() - k - spaces + 1)).step_by(step) { // start of window
+            let window = &sequence[i..i+k+spaces];
             let spacemer = window
                 .iter()
                 .zip(&mask)
@@ -150,6 +168,23 @@ pub fn generate_g_spaced_kmers_with_step(
         }
     }
     Ok(spacemers)
+}
+pub fn generate_masked_seeds(
+    sequence: &[char],
+    mask: &Vec<char>,
+    step: usize
+) -> Result<Vec<Vec<char>>> {
+    let mut masked_seeds = Vec::new();
+    for i in (0..sequence.len() - mask.len() + 1).step_by(step) {
+        masked_seeds.push(sequence[i..i+mask.len()].to_vec()
+            .iter()
+            .zip(mask)
+            .filter_map(|(&window_char, &mask_char)| if mask_char == '1' { Some(window_char) } else { None })
+            .collect()
+        );
+    }
+
+    Ok(masked_seeds)
 }
 
 /* This function calculates the euclidean distance between kmer-vector representations
@@ -161,9 +196,10 @@ pub fn minimizer_similarity(
     k: usize,
     w: usize,
     step: usize
+    // hash function choice doesn't matter, so I pre-select it.
 ) -> Result<f64> {
-    let base_minimizers = generate_minimizers(base_seq, k, w, step)?;
-    let mod_minimizers = generate_minimizers(mod_seq, k, w, step)?;
+    let base_minimizers = generate_minimizers(base_seq, k, w, step, my_hash_function, 69)?;
+    let mod_minimizers = generate_minimizers(mod_seq, k, w, step, my_hash_function, 69)?;
 
     similarity_methods::match_similarity_method(
         &base_minimizers,
@@ -179,26 +215,32 @@ pub fn generate_minimizers(
     seq: &[char],
     k: usize,
     w: usize,
-    step: usize
+    step: usize,
+    hash_function: fn(&Vec<char>, u64) -> u64,
+    seed: u64
 ) -> Result<Vec<Vec<char>>> {
     if k > w {bail!("k ({}) > w ({})", k, w);}
     if w > seq.len() {bail!("w ({}) > sequence length ({})", w, seq.len());}
 
     let mut minimizers: Vec<Vec<char>> = Vec::new();
-    for idx in (0..seq.len() - w).step_by(step) {
+    for idx in (0..seq.len() - w + 1).step_by(step) {
         let window = &seq[idx..idx + w];
-        let minimizer = generate_single_minimizer(window, k)?;
+        let minimizer = generate_single_minimizer(window, k, hash_function, seed)?;
         minimizers.push(minimizer);
     }
     Ok(minimizers)
 }
 
-pub fn generate_single_minimizer(window: &[char], k: usize) -> Result<Vec<char>> {
-    let seed: u64 = 69;
+pub fn generate_single_minimizer(
+    window: &[char],
+    k: usize,
+    hash_function: fn(&Vec<char>, u64) -> u64,
+    seed: u64
+) -> Result<Vec<char>> {
     let kmers = generate_kmers(window, k)?;
     let minimizer = kmers
             .iter()
-            .min_by_key(|item| my_hash_function(item, seed))
+            .min_by_key(|&item| hash_function(item, seed))
             .unwrap();
     Ok(minimizer.to_vec())
 }
@@ -206,7 +248,7 @@ pub fn generate_single_minimizer(window: &[char], k: usize) -> Result<Vec<char>>
 /* This is a simple hash function that maps items (kmers) to u64 integers.
 * It uses a seed, so this is technically a series of hash functions.
 */
-fn my_hash_function<T: Hash> (item: &T, seed: u64) -> u64 {
+fn my_hash_function (item: &Vec<char>, seed: u64) -> u64 {
     let mut hasher = SeaHasher::with_seeds(seed, seed, seed, seed);
     item.hash(&mut hasher);
     hasher.finish()
@@ -234,7 +276,7 @@ of a window within the strobemer's span. Specifically, that window is:
         window_end = window_start - strobe_window_length
         strobemer_span[window_start..window_end].
 */
-pub fn strobemer_similarity(
+pub fn strobemer_similarity<T: Hash>(
     base_seq: &[char],
     mod_seq: &[char],
     similarity_method: &str,        // distance function to be used (e.g. cosine similarity).
@@ -255,7 +297,8 @@ pub fn strobemer_similarity(
         strobe_length,
         strobe_window_gap,
         strobe_window_length,
-        step
+        step,
+        my_hash_function // hash function choice doesn't matter, so I pre-select
     )?;
     let mod_strobemers = generate_strobemers(
         mod_seq,
@@ -263,7 +306,8 @@ pub fn strobemer_similarity(
         strobe_length,
         strobe_window_gap,
         strobe_window_length,
-        step
+        step,
+        my_hash_function
     )?;
 
     similarity_methods::match_similarity_method(
@@ -275,27 +319,29 @@ pub fn strobemer_similarity(
 /* HELPER FUNCTION FOR strobemer_euclidean_distance()
  * This function generates a string's set of strobemers.
  */
-fn generate_strobemers(
+pub fn generate_strobemers(
     seq: &[char],
     order: usize,
     strobe_length: usize,
     strobe_window_gap: usize,
     strobe_window_length: usize,
-    step: usize
+    step: usize,
+    hash_function: fn(&Vec<char>, u64) -> u64
 ) -> Result<Vec<Vec<char>>> {
     let mut strobemers: Vec<Vec<char>> = Vec::new(); // custom struct to manage slice ownership.
     let strobemer_span = strobe_length +
-        order * (strobe_window_length + strobe_window_gap);
+        (order - 1) * (strobe_window_length + strobe_window_gap);
     let last_strobemer_start_index = seq.len() - strobemer_span; // try + 1?
 
-    for idx in (0..last_strobemer_start_index).step_by(step) {
+    for idx in (0..=last_strobemer_start_index).step_by(step) {
         let strobemer_window = &seq[idx..idx + strobemer_span];
         let strobemer = generate_single_strobemer(
             strobemer_window,
             order,
             strobe_length,
             strobe_window_gap,
-            strobe_window_length
+            strobe_window_length,
+            hash_function
         )?;
         strobemers.push(strobemer);
     }
@@ -310,12 +356,13 @@ fn generate_strobemers(
  * Pass it a reference to the substring you want to generate a strobemer from, with the first
  * strobemer being seq[0..=l].
  */
-fn generate_single_strobemer(
+pub fn generate_single_strobemer(
     strobemer_window: &[char],
     order: usize,
     strobe_length: usize,
     strobe_window_gap: usize,
-    strobe_window_length: usize
+    strobe_window_length: usize,
+    hash_function: fn(&Vec<char>, u64) -> u64
 ) -> Result<Vec<char>> {
     let mut strobemer: Vec<char> = Vec::new();
     let first_strobe = &strobemer_window[0..strobe_length];
@@ -324,7 +371,7 @@ fn generate_single_strobemer(
         let window_end = strobe_length + (strobe_window_gap + strobe_window_length) * n;
         let window_start = window_end - strobe_window_length;
         let strobe_window = &strobemer_window[window_start..window_end];
-        let strobe = generate_single_minimizer(strobe_window, strobe_length)?;
+        let strobe = generate_single_minimizer(strobe_window, strobe_length, hash_function, 69)?;
         strobemer.extend(strobe);
     }
     Ok(strobemer)

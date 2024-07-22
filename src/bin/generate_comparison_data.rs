@@ -6,6 +6,8 @@ use std::collections::HashMap;
 use std::io::{self, Write};
 use std::fs::File;
 
+use edit_distance::edit_distance;
+
 use std::time::Instant;
 
 #[derive(Debug, Parser)]
@@ -24,6 +26,8 @@ struct Args {
     step: usize,
     #[arg(short, long)]
     k: Option<usize>,
+    #[arg(long)]
+    spaces: Option<usize>,
     #[arg(short, long)]
     minimizer_window_length: Option<usize>,
     #[arg(long)]
@@ -92,7 +96,7 @@ fn run(args: Args) -> Result<()> {
                     .expect("argument 'minimizer_window_length' not provided!"),
                 args.step.clone()
             )?,
-            "strobemer" => representation_methods::strobemer_similarity(
+            "strobemer" => representation_methods::strobemer_similarity::<&str>(
                 &base_seq,
                 &mod_seq,
                 &args.similarity_method,
@@ -116,6 +120,17 @@ fn run(args: Args) -> Result<()> {
                     .expect("argument 'gaps' not provided!"),
                 args.step.clone(),
             )?,
+            "spaced_kmer" => representation_methods::spaced_kmer_similarity(
+                &base_seq,
+                &mod_seq,
+                &args.similarity_method,
+                args.k.clone()
+                    .expect("argument 'k' not provided!"),
+                args.spaces.clone()
+                    .expect("argument 'k' not provided!"),
+                args.step.clone()
+            )?,
+            "direct_alignment" => edit_distance(&record.base_sequence, &record.modified_sequence) as f64,
             _ => {
                 bail!("Unknown representation method: {}", args.representation_method.as_str());
             }

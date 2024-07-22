@@ -76,7 +76,7 @@ pub fn jaccard_similarity(base_item_bag: &Vec<Vec<char>>, mod_item_bag: &Vec<Vec
     for (item, base_count) in base_item_counts.iter() {
         let mod_count = mod_item_counts.get(item).unwrap();
         union += base_count + mod_count;
-        intersection += base_count.min(*mod_count);
+        intersection += base_count.min(*mod_count) * 2.0;
     }
     Ok(intersection / union)
 }
