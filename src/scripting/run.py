@@ -194,4 +194,33 @@ def strobemer():
                     for step in [2, 3]:
                         run_strobemer(2001, "jaccard_similarity", order, strobe_length, strobe_window_gap, strobe_window_length, step)
 
-strobemer()
+
+
+def run_minimizer(
+    db_size,
+    sim_method,
+    k,
+    w,
+    step
+):
+    outpath = (f"../../tests/outputs/"
+        f"data_{db_size}/"
+        f"kmer/{sim_method}/"
+        f"k_{k}/"
+        f"w_{w}/"
+        f"step_{step}/"
+    )
+    print(f"Creating output directory...")
+    os.system(f"mkdir -p {outpath}")
+    command = (
+        "cargo run --bin generate_comparison_data -- "
+        f"-i ../../tests/inputs/sequences_{db_size}.csv "
+        f"-o {outpath}data.csv "
+        f"--representation-method kmer "
+        f"--similarity-method {sim_method} "
+        f"-k {k} "
+        f"--minimizer-window-length {w} "
+        f"--step {step} "
+    )
+    print(f"Executing: {command}")
+    os.system(command)
