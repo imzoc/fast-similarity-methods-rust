@@ -10,8 +10,8 @@ use rand::thread_rng;
 use crate::utils::similarity_methods;
 
 pub fn kmer_similarity(
-    base_seq: &[char],
-    mod_seq: &[char],
+    base_seq: &[u8],
+    mod_seq: &[u8],
     similarity_method: &str,
     k: usize,
     step: usize
@@ -27,12 +27,12 @@ pub fn kmer_similarity(
 }
 
 // This function simply takes a string and returns the set of k-mers.
-pub fn generate_kmers(sequence: &[char], k: usize) -> Result<Vec<Vec<char>>> {
+pub fn generate_kmers(sequence: &[u8], k: usize) -> Result<Vec<Vec<char>>> {
     generate_kmers_with_step(sequence, k, 1)
 }
 
 pub fn generate_kmers_with_step(
-    sequence: &[char],
+    sequence: &[u8],
     k: usize,
     step: usize
 ) -> Result<Vec<Vec<char>>> {
@@ -47,7 +47,7 @@ pub fn generate_kmers_with_step(
     }
 
     for i in (0..=(sequence.len() - k)).step_by(step) {
-        let kmer: Vec<char> = sequence[i..i + k].to_vec();
+        let kmer: Vec<char> = std::str::from_utf8(&sequence[i..i + k])?.chars().collect();
         kmers.push(kmer);
     }
     Ok(kmers)
@@ -57,8 +57,8 @@ pub fn generate_kmers_with_step(
  * matches over one gap.
  */
 pub fn gapmer_similarity(
-    base_seq: &[char],
-    mod_seq: &[char],
+    base_seq: &[u8],
+    mod_seq: &[u8],
     similarity_method: &str,
     k: usize,
     gaps: usize,
@@ -134,7 +134,7 @@ pub fn generate_n_masks(k: usize, spaces: usize, n: usize) -> Vec<Vec<char>> {
     masks
 }
 pub fn generate_g_spaced_kmers_with_step(
-    sequence: &[char],
+    sequence: &[u8],
     k: usize,
     spaces: usize,
     step: usize
@@ -162,7 +162,7 @@ pub fn generate_g_spaced_kmers_with_step(
             let spacemer = window
                 .iter()
                 .zip(&mask)
-                .filter_map(|(&window_char, &mask_char)| if mask_char == '1' { Some(window_char) } else { None })
+                .filter_map(|(&window_char, &mask_char)| if mask_char == '1' { Some(window_char as char) } else { None })
                 .collect();
             spacemers.entry(mask.clone()).or_insert(Vec::new()).push(spacemer);
         }
@@ -190,8 +190,8 @@ pub fn generate_masked_seeds(
 /* This function calculates the euclidean distance between kmer-vector representations
 * of minimizer representations of strings. */
 pub fn minimizer_similarity(
-    base_seq: &[char],
-    mod_seq: &[char],
+    base_seq: &[u8],
+    mod_seq: &[u8],
     similarity_method: &str,
     k: usize,
     w: usize,
@@ -212,7 +212,7 @@ pub fn minimizer_similarity(
  * with a set seed (69). It only uses ONE hash function.
  */
 pub fn generate_minimizers(
-    seq: &[char],
+    seq: &[u8],
     k: usize,
     w: usize,
     step: usize,
@@ -232,7 +232,7 @@ pub fn generate_minimizers(
 }
 
 pub fn generate_single_minimizer(
-    window: &[char],
+    window: &[u8],
     k: usize,
     hash_function: fn(&Vec<char>, u64) -> u64,
     seed: u64
@@ -277,8 +277,8 @@ of a window within the strobemer's span. Specifically, that window is:
         strobemer_span[window_start..window_end].
 */
 pub fn strobemer_similarity<T: Hash>(
-    base_seq: &[char],
-    mod_seq: &[char],
+    base_seq: &[u8],
+    mod_seq: &[u8],
     similarity_method: &str,        // distance function to be used (e.g. cosine similarity).
     order: usize,                   // the number of concatenated strobes in each strobemer.
     strobe_length: usize,           // the length of each strobe.
@@ -309,18 +309,19 @@ pub fn strobemer_similarity<T: Hash>(
         step,
         my_hash_function
     )?;
-
+    
     similarity_methods::match_similarity_method(
         &base_strobemers, 
         &mod_strobemers,
         similarity_method)
+    
 }
 
 /* HELPER FUNCTION FOR strobemer_euclidean_distance()
  * This function generates a string's set of strobemers.
  */
 pub fn generate_strobemers(
-    seq: &[char],
+    seq: &[u8],
     order: usize,
     strobe_length: usize,
     strobe_window_gap: usize,
@@ -328,9 +329,14 @@ pub fn generate_strobemers(
     step: usize,
     hash_function: fn(&Vec<char>, u64) -> u64
 ) -> Result<Vec<Vec<char>>> {
+    ensure!(strobe_window_length > strobe_length, "Strobe length is equal or greater to the window it is selected from.");
     let mut strobemers: Vec<Vec<char>> = Vec::new(); // custom struct to manage slice ownership.
     let strobemer_span = strobe_length +
         (order - 1) * (strobe_window_length + strobe_window_gap);
+    if seq.len() < strobemer_span { // the sequence is just too short...
+        return Ok(strobemers)
+    }
+
     let last_strobemer_start_index = seq.len() - strobemer_span; // try + 1?
 
     for idx in (0..=last_strobemer_start_index).step_by(step) {
@@ -357,7 +363,7 @@ pub fn generate_strobemers(
  * strobemer being seq[0..=l].
  */
 pub fn generate_single_strobemer(
-    strobemer_window: &[char],
+    strobemer_window: &[u8],
     order: usize,
     strobe_length: usize,
     strobe_window_gap: usize,
@@ -365,7 +371,8 @@ pub fn generate_single_strobemer(
     hash_function: fn(&Vec<char>, u64) -> u64
 ) -> Result<Vec<char>> {
     let mut strobemer: Vec<char> = Vec::new();
-    let first_strobe = &strobemer_window[0..strobe_length];
+    let first_strobe = std::str::from_utf8(&strobemer_window[0..strobe_length])?;
+    let first_strobe: Vec<char> = first_strobe.chars().collect();
     strobemer.extend(first_strobe);
     for n in 1..order {
         let window_end = strobe_length + (strobe_window_gap + strobe_window_length) * n;

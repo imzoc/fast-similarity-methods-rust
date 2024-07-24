@@ -9,13 +9,15 @@ pub fn match_similarity_method(
     mod_item_bag: &Vec<Vec<char>>,
     similarity_method: &str
 ) -> Result<f64> {
-    match similarity_method {
+    let score = match similarity_method {
         "euclidean_distance" => euclidean_distance(base_item_bag, mod_item_bag),
         "cosine_similarity" => cosine_similarity(base_item_bag, mod_item_bag),
         "jaccard_similarity" => jaccard_similarity(base_item_bag, mod_item_bag),
         "minhash" => minhash_similarity(base_item_bag, mod_item_bag),
         _ => {bail!("Unknown distance function: {}", similarity_method);}
-    }
+    }?;
+    if score.is_nan() {Ok(-1.0)} else {Ok(score)}
+    // if score is nan, then the string is too short to generate a representation set.
 }
 
 pub fn frequency_vectors<'a>(base_item_bag: &'a Vec<Vec<char>>, mod_item_bag: &'a Vec<Vec<char>>

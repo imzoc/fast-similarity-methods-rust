@@ -2,7 +2,7 @@
 name = "alignment_free_methods"
 version = "0.1.0"
 edition = "2021"
-default-run = "generate_comparison_data"
+default-run = "strobemer_comparison"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -27,8 +27,8 @@ name = "alignment_free_methods"  # This name will be used to reference the libra
 path = "src/lib.rs"  # Specify the path to your library file
 
 [[bin]]
-name = "generate_comparison_data"
-path = "src/bin/generate_comparison_data.rs"
+name = "strobemer_comparison"
+path = "src/bin/strobemer_comparison.rs"
 
 [[bin]]
 name = "generate_string_pairs"

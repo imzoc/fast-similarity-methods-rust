@@ -18,14 +18,14 @@ impl Tensor {
         Tensor { data, shape }
     }
 
-    pub fn construct_with_step(sequence: &[char], k: usize, step: usize) -> Result<Self> {
+    pub fn construct_with_step(sequence: &[u8], k: usize, step: usize) -> Result<Self> {
         let mut tensor = Tensor::new_empty(k);
         let kmers = representation_methods::generate_kmers_with_step(sequence, k, step)?;
         tensor.populate(&kmers)?;
         Ok(tensor)
     }
 
-    pub fn construct(sequence: &[char], k: usize) -> Result<Self> {
+    pub fn construct(sequence: &[u8], k: usize) -> Result<Self> {
         Tensor::construct_with_step(sequence, k, 1)
     }
 

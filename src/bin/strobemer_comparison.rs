@@ -1,38 +1,36 @@
 use std::time::Instant;
 use std::io::{self, Write};
+use std::path::Path;
 use bio::io::fasta;
 use anyhow::Result;
 use clap::Parser;
 use rusqlite::{params, Connection};
 
+use alignment_free_methods::utils::representation_methods;
 
 #[derive(Debug, Parser)]
 #[command(about, author, version)]
-/// Similarity Methods
 struct Args {
     #[arg(short='r', long)]
     references_file: String,
     #[arg(short='q', long)]
     query_file: String,
+    #[arg(short='d')]
+    database: String,
     #[arg(short='m', long)]
     similarity_method: String,
-    #[arg(long, default_value_t = 1)]
+    #[arg(short='s', default_value_t = 1)]
     step: usize,
     
+    #[arg(short='o')]
     order: usize,
     #[arg(short='l', long)]
     strobe_length: usize,
     #[arg(long="w-gap")]
     strobe_window_gap: usize,
-    #[arg(long="w_len")]
+    #[arg(long="w-len")]
     strobe_window_length: usize,
 }
-
-#[allow(unused_imports)]
-use alignment_free_methods::utils::sequence;
-use alignment_free_methods::utils::representation_methods;
-
-
 
 // --------------------------------------------------
 fn main() {
@@ -45,34 +43,42 @@ fn main() {
 // --------------------------------------------------
 // See this repo's README file for pseudocode
 fn run(args: Args) -> Result<()> {
-    let start = Instant::now();
-
-    let conn = Connection::open("seeds.db")?;
+    let project_dir = std::env::var("CARGO_MANIFEST_DIR")?;
+    let db_file = Path::new(&project_dir)
+        .join("tests/outputs")
+        .join(&args.database);
+    let conn = Connection::open(db_file)?;
     conn.execute(
         "CREATE TABLE IF NOT EXISTS seeds (
             id INTEGER PRIMARY KEY,
             query_name TEXT NOT NULL,
             reference_name TEXT NOT NULL,
             seed_name TEXT NOT NULL,
-            score TEXT NOT NULL
+            score TEXT NOT NULL,
+            time TEXT NOT NULL
         )",
         [],
     )?;
-    let mut reference_reader =
-        fasta::Reader::from_file(&args.references_file)?;
-    let mut query_reader = 
-        fasta::Reader::from_file(&args.query_file)?;
+    let query_file = Path::new(&project_dir)
+        .join("tests/inputs")
+        .join(&args.query_file);
+    let query_reader = fasta::Reader::from_file(query_file)?;
 
     let mut i = 0;
     for query_record in query_reader.records() {
         let query_record = query_record?;
         let query_seq = query_record.seq();
 
+        let reference_file = Path::new(&project_dir)
+            .join("tests/inputs")
+            .join(&args.references_file);
+        let reference_reader = fasta::Reader::from_file(reference_file)?;
         for reference_record in reference_reader.records() {
             i += 1;
             let reference_record = reference_record?;
             let reference_seq = reference_record.seq();
             
+            let start = Instant::now();
             let estimated_distance: f64 = representation_methods::strobemer_similarity::<&str>(
                 query_seq,
                 reference_seq,
@@ -83,6 +89,7 @@ fn run(args: Args) -> Result<()> {
                 args.strobe_window_length.clone(),
                 args.step.clone()
             )?;
+            let duration = start.elapsed().subsec_millis();
 
             // enter score into database
             let seed_name = format!("({},{},{},{},{})-strobemers",
@@ -94,22 +101,15 @@ fn run(args: Args) -> Result<()> {
             );
             let query_name = query_record.id();
             let reference_name = reference_record.id();
+            println!("{}", estimated_distance);
             conn.execute(
-                "INSERT INTO seeds (query_name, reference_name, seed_name, score) VALUES (?1, ?2, ?3, ?4)",
-                params![query_name, reference_name, seed_name, estimated_distance],
+                "INSERT INTO seeds (query_name, reference_name, seed_name, score, time) VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![query_name, reference_name, seed_name, estimated_distance, duration],
             )?;
             print!("\rString pair #{:?} has been processed!", i);
             io::stdout().flush().unwrap();
         }
 
     }
-
-    /*
-    let duration = start.elapsed();
-    let mut file = File::create(format!("{}{}", &args.outfile, ".benchmark.log"))?;
-    write!(file, "{:?}", duration)?;
-
-    */
-
     Ok(())
 }

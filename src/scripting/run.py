@@ -151,7 +151,8 @@ def spaced_kmer():
 
 
 def run_strobemer(
-    db_size,
+    references_file,
+    query_file,
     sim_method,
     order,
     strobe_length,
@@ -163,8 +164,9 @@ def run_strobemer(
 
     command = (
         "cargo run --bin strobemer_distance -- "
-        f"-r ../../tests/inputs/{references_file}.fasta "
-        f"-q ../../testslinputs/{query_file}.fasta"
+        f"-r {references_file} "
+        f"-q {query_file} "
+        f"-d seeds.db "
         f"-m {sim_method} "
         f"-o {order} "
         f"-l {strobe_length} "
@@ -181,7 +183,10 @@ def strobemer():
             for strobe_window_gap in [0]:
                 for strobe_window_length in [40]:
                     for step in [2, 3]:
-                        run_strobemer(2001, "jaccard_similarity", order, strobe_length, strobe_window_gap, strobe_window_length, step)
+                        run_strobemer(
+    "artificial.fasta", "DF000000975.fa", "jaccard_similarity",
+    order, strobe_length, strobe_window_gap, strobe_window_length, step
+                        )
 
 
 
@@ -204,7 +209,7 @@ def run_minimizer(
     command = (
         "cargo run --bin minimizer_distance -- "
         f"-i ../../tests/inputs/{references_file}.fasta "
-        f"-q ../../testslinputs/{query_file}.fasta"
+        f"-q ../../testslinputs/{query_file}.fasta "
         f"-o {outpath}data.csv "
         f"--representation-method kmer "
         f"--similarity-method {sim_method} "
@@ -214,3 +219,5 @@ def run_minimizer(
     )
     print(f"Executing: {command}")
     os.system(command)
+
+strobemer()
