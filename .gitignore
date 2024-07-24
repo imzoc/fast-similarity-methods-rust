@@ -1,3 +1,4 @@
 /target
 /tests/outputs/*
 __pycache__
+/tests/inputs/largedata
