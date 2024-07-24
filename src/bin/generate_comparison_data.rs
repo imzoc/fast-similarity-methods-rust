@@ -1,58 +1,38 @@
-use anyhow::{bail, Result};
-use clap::Parser;
-use csv::{ReaderBuilder, WriterBuilder};
-use serde::Deserialize;
-use std::collections::HashMap;
-use std::io::{self, Write};
-use std::fs::File;
-
-use edit_distance::edit_distance;
-
 use std::time::Instant;
+use std::io::{self, Write};
+use bio::io::fasta;
+use anyhow::Result;
+use clap::Parser;
+use rusqlite::{params, Connection};
+
 
 #[derive(Debug, Parser)]
 #[command(about, author, version)]
 /// Similarity Methods
 struct Args {
-    #[arg(short='i', long)]
-    sequence_db: String,
-    #[arg(short, long, default_value = "tests/outputs/unnamed_data.csv")]
-    outfile: String,
-    #[arg(long)]
-    representation_method: String,
-    #[arg(long)] 
+    #[arg(short='r', long)]
+    references_file: String,
+    #[arg(short='q', long)]
+    query_file: String,
+    #[arg(short='m', long)]
     similarity_method: String,
     #[arg(long, default_value_t = 1)]
     step: usize,
-    #[arg(short, long)]
-    k: Option<usize>,
-    #[arg(long)]
-    spaces: Option<usize>,
-    #[arg(short, long)]
-    minimizer_window_length: Option<usize>,
-    #[arg(long)]
-    order: Option<usize>,
-    #[arg(long)]
-    strobe_length: Option<usize>,
-    #[arg(long)]
-    strobe_window_gap: Option<usize>,
-    #[arg(long)]
-    strobe_window_length: Option<usize>,
-    #[arg(long)]
-    gaps: Option<usize>
+    
+    order: usize,
+    #[arg(short='l', long)]
+    strobe_length: usize,
+    #[arg(long="w-gap")]
+    strobe_window_gap: usize,
+    #[arg(long="w_len")]
+    strobe_window_length: usize,
 }
 
 #[allow(unused_imports)]
 use alignment_free_methods::utils::sequence;
 use alignment_free_methods::utils::representation_methods;
 
-/* Using serde to parse CSV data. */
-#[derive(Debug, Deserialize)]
-struct DatabaseRecord {
-    base_sequence: String,
-    modified_sequence: String,
-    edit_distance: usize,
-}
+
 
 // --------------------------------------------------
 fn main() {
@@ -67,129 +47,69 @@ fn main() {
 fn run(args: Args) -> Result<()> {
     let start = Instant::now();
 
-    // Rolling magnitude and variability data.
-    let mut edit_distance_sums: HashMap<usize, f64> = HashMap::new();
-    let mut edit_distance_squared_sums: HashMap<usize, f64> = HashMap::new();
-    let mut edit_distance_counts: HashMap<usize, f64> = HashMap::new();
-    let mut rdr = ReaderBuilder::new().from_path(&args.sequence_db)?;
+    let conn = Connection::open("seeds.db")?;
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS seeds (
+            id INTEGER PRIMARY KEY,
+            query_name TEXT NOT NULL,
+            reference_name TEXT NOT NULL,
+            seed_name TEXT NOT NULL,
+            score TEXT NOT NULL
+        )",
+        [],
+    )?;
+    let mut reference_reader =
+        fasta::Reader::from_file(&args.references_file)?;
+    let mut query_reader = 
+        fasta::Reader::from_file(&args.query_file)?;
 
-    for (i, result) in rdr.deserialize().enumerate() {
-        let record: DatabaseRecord = result?;
-        let base_seq: Vec<char> = record.base_sequence.chars().collect();
-        let mod_seq: Vec<char> = record.modified_sequence.chars().collect();        
-        let estimated_distance: f64 = match args.representation_method.as_str() {
-            "kmer" => representation_methods::kmer_similarity(
-                &base_seq,
-                &mod_seq,
-                &args.similarity_method,
-                args.k.clone()
-                    .expect("argument 'k' not provided!"),
-                args.step.clone()
-            )?,
-            "minimizer" => representation_methods::minimizer_similarity(
-                &base_seq,
-                &mod_seq,
-                &args.similarity_method,
-                args.k.clone()
-                    .expect("argument 'k' not provided!"),
-                args.minimizer_window_length.clone()
-                    .expect("argument 'minimizer_window_length' not provided!"),
-                args.step.clone()
-            )?,
-            "strobemer" => representation_methods::strobemer_similarity::<&str>(
-                &base_seq,
-                &mod_seq,
-                &args.similarity_method,
-                args.order.clone()
-                    .expect("argument 'strobemer_order' not provided!"),
-                args.strobe_length.clone()
-                    .expect("argument 'strobe_length' not provided!"),
-                args.strobe_window_gap.clone()
-                    .expect("argument 'strobe_window_gap' not provided!"),
-                args.strobe_window_length.clone()
-                    .expect("argument 'strobe_window_length' not provided!"),
-                args.step.clone()
-            )?,
-            "gapmer" => representation_methods::gapmer_similarity(
-                &base_seq,
-                &mod_seq,
-                &args.similarity_method,
-                args.k.clone()
-                    .expect("argument 'k' not provided!"),
-                args.gaps.clone()
-                    .expect("argument 'gaps' not provided!"),
-                args.step.clone(),
-            )?,
-            "spaced_kmer" => representation_methods::spaced_kmer_similarity(
-                &base_seq,
-                &mod_seq,
-                &args.similarity_method,
-                args.k.clone()
-                    .expect("argument 'k' not provided!"),
-                args.spaces.clone()
-                    .expect("argument 'k' not provided!"),
-                args.step.clone()
-            )?,
-            "direct_alignment" => edit_distance(&record.base_sequence, &record.modified_sequence) as f64,
-            _ => {
-                bail!("Unknown representation method: {}", args.representation_method.as_str());
-            }
-        };
+    let mut i = 0;
+    for query_record in query_reader.records() {
+        let query_record = query_record?;
+        let query_seq = query_record.seq();
 
-        let sum = edit_distance_sums.entry(record.edit_distance.clone()).or_insert(0.0);
-        let squared_sum = edit_distance_squared_sums.entry(record.edit_distance.clone()).or_insert(0.0);
-        let count = edit_distance_counts.entry(record.edit_distance.clone()).or_insert(0.0);
-        *sum += estimated_distance;
-        *squared_sum += estimated_distance * estimated_distance;
-        *count += 1.0;
+        for reference_record in reference_reader.records() {
+            i += 1;
+            let reference_record = reference_record?;
+            let reference_seq = reference_record.seq();
+            
+            let estimated_distance: f64 = representation_methods::strobemer_similarity::<&str>(
+                query_seq,
+                reference_seq,
+                &args.similarity_method,
+                args.order.clone(),
+                args.strobe_length.clone(),
+                args.strobe_window_gap.clone(),
+                args.strobe_window_length.clone(),
+                args.step.clone()
+            )?;
 
-        print!("\rString pair #{:?} has been processed!", i);
-        io::stdout().flush().unwrap();
+            // enter score into database
+            let seed_name = format!("({},{},{},{},{})-strobemers",
+                &args.order,
+                &args.strobe_length,
+                &args.strobe_window_gap,
+                &args.strobe_window_length,
+                &args.step
+            );
+            let query_name = query_record.id();
+            let reference_name = reference_record.id();
+            conn.execute(
+                "INSERT INTO seeds (query_name, reference_name, seed_name, score) VALUES (?1, ?2, ?3, ?4)",
+                params![query_name, reference_name, seed_name, estimated_distance],
+            )?;
+            print!("\rString pair #{:?} has been processed!", i);
+            io::stdout().flush().unwrap();
+        }
+
     }
+
+    /*
     let duration = start.elapsed();
     let mut file = File::create(format!("{}{}", &args.outfile, ".benchmark.log"))?;
     write!(file, "{:?}", duration)?;
 
-    // Compute mean and confidence intervals from rolling data.
-    let mut lower_bounds: HashMap<usize, f64> = HashMap::new();
-    let mut upper_bounds: HashMap<usize, f64> = HashMap::new();
-    let mut means: HashMap<usize, f64> = HashMap::new();
-    for (edit_distance, count) in &edit_distance_counts {
-        let sum = edit_distance_sums.get(&edit_distance).unwrap();
-        let squared_sum = edit_distance_squared_sums.get(&edit_distance).unwrap();
+    */
 
-        let mean = sum / count;
-        let variance = (squared_sum - mean * sum) / count;
-        let mean_se = (variance / count).sqrt();
-
-        means.insert(edit_distance.clone(), mean);
-        lower_bounds.insert(edit_distance.clone(), mean - mean_se);
-        upper_bounds.insert(edit_distance.clone(), mean + mean_se);
-    }
-
-    // Create the header row for comparison data file
-    let mut header_row = vec!["edit distance".to_string()];
-    header_row.push("mean".to_string());
-    header_row.push("lower confidence bound".to_string());
-    header_row.push("upper confidence bound".to_string());
-    header_row.push("number of string pairs".to_string());
-
-    let mut wtr = WriterBuilder::new()
-        .delimiter(b',')
-        .from_path(&args.outfile)?;
-    wtr.write_record(&header_row)?;
-
-    let mut sorted_edit_distances: Vec<&usize> = edit_distance_counts.keys().collect();
-    sorted_edit_distances.sort();
-    for dist in sorted_edit_distances {
-        let mut row = vec![dist.to_string()];
-        row.push(means.get(&dist).unwrap().to_string());
-        row.push(lower_bounds.get(&dist).unwrap().to_string());
-        row.push(upper_bounds.get(&dist).unwrap().to_string());
-        row.push(edit_distance_counts.get(&dist).unwrap().to_string());
-        wtr.write_record(&row)?;
-    }
-
-    println!(r#"Done, see output "{}""#, args.outfile);
     Ok(())
 }

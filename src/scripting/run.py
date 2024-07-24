@@ -159,29 +159,18 @@ def run_strobemer(
     strobe_window_length,
     step
 ):
-    outpath = (f"../../tests/outputs/"
-        f"data_{db_size}/"
-        f"strobemer/{sim_method}/"
-        f"order_{order}/"
-        f"strobe_length_{strobe_length}/"
-        f"strobe_window_gap_{strobe_window_gap}/"
-        f"strobe_window_length_{strobe_window_length}/"
-        f"step_{step}/"
-    )
+    seed_name = f"({order},{strobe_length},{strobe_window_gap},{strobe_window_length},{step})-strobemers"
 
-    print(f"Creating output directory...")
-    os.system(f"mkdir -p {outpath}")
     command = (
-        "cargo run --bin generate_comparison_data -- "
-        f"-i ../../tests/inputs/sequences_{db_size}.csv "
-        f"-o {outpath}data.csv "
-        f"--representation-method strobemer "
-        f"--similarity-method {sim_method} "
-        f"--order {order} "
-        f"--strobe-length {strobe_length} "
-        f"--strobe-window-gap {strobe_window_gap} "
-        f"--strobe-window-length {strobe_window_length} "
-        f"--step {step} "
+        "cargo run --bin strobemer_distance -- "
+        f"-r ../../tests/inputs/{references_file}.fasta "
+        f"-q ../../testslinputs/{query_file}.fasta"
+        f"-m {sim_method} "
+        f"-o {order} "
+        f"-l {strobe_length} "
+        f"--w-gap {strobe_window_gap} "
+        f"--w-len {strobe_window_length} "
+        f"-s {step} "
     )
     print(f"Executing: {command}")
     os.system(command)
@@ -213,8 +202,9 @@ def run_minimizer(
     print(f"Creating output directory...")
     os.system(f"mkdir -p {outpath}")
     command = (
-        "cargo run --bin generate_comparison_data -- "
-        f"-i ../../tests/inputs/sequences_{db_size}.csv "
+        "cargo run --bin minimizer_distance -- "
+        f"-i ../../tests/inputs/{references_file}.fasta "
+        f"-q ../../testslinputs/{query_file}.fasta"
         f"-o {outpath}data.csv "
         f"--representation-method kmer "
         f"--similarity-method {sim_method} "
