@@ -26,13 +26,15 @@ struct StrobemerArgs {
     #[command(flatten)]
     common: CommonArgs,
 
-    #[arg(short='o', value_name = "INT PARAM")]
+    #[arg(short='p', value_name = "STRING")]
+    protocol: String,
+    #[arg(short='o', value_name = "INT")]
     order: usize,
-    #[arg(short='l', value_name = "INT PARAM", long)]
+    #[arg(short='l', value_name = "INT", long)]
     strobe_length: usize,
-    #[arg(long="w-gap", value_name = "INT PARAM")]
+    #[arg(long="w-gap", value_name = "INT")]
     strobe_window_gap: usize,
-    #[arg(long="w-len", value_name = "INT PARAM")]
+    #[arg(long="w-len", value_name = "INT")]
     strobe_window_length: usize,
 }
 

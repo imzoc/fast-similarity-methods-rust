@@ -185,7 +185,7 @@ def strobemer():
                 for strobe_window_length in [40]:
                     for step in [2, 3]:
                         run_strobemer(
-    "artificial.fasta", "DF000000975.fa", "jaccard_similarity",
+    "artificial.fasta", "DF000000975.fa", "rand", "jaccard_similarity",
     order, strobe_length, strobe_window_gap, strobe_window_length, step
                         )
 
