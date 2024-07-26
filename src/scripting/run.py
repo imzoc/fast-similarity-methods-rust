@@ -153,6 +153,7 @@ def spaced_kmer():
 def run_strobemer(
     references_file,
     query_file,
+    protocol,
     sim_method,
     order,
     strobe_length,
@@ -160,13 +161,13 @@ def run_strobemer(
     strobe_window_length,
     step
 ):
-    seed_name = f"({order},{strobe_length},{strobe_window_gap},{strobe_window_length},{step})-strobemers"
+    seed_name = f"({order},{strobe_length},{strobe_window_gap},{strobe_window_length},{step})-{protocol}-strobemers"
 
     command = (
-        "cargo run --bin strobemer_distance -- "
-        f"-r {references_file} "
-        f"-q {query_file} "
-        f"-d seeds.db "
+        "cargo run --bin strobemer_comparison -- "
+        f"{references_file} "
+        f"{query_file} "
+        f"-p {protocol}"
         f"-m {sim_method} "
         f"-o {order} "
         f"-l {strobe_length} "
